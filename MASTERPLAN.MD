@@ -35,7 +35,9 @@ Sistem **"Dağıtıcı - İşçi" (Dispatcher - Worker)** mimarisi üzerine kuru
 
 ### ⏳ Geliştirme Süreci (Next Steps)
 - [ ] Veri analizi ve istatistik modülü (Analysis).
-- [ ] Web Arayüzü (Dashboard) - Gelecek vizyonu.
+- [ ] Veri analizi ve istatistik modülü (Analysis).
+- [/] Web Arayüzü (Dashboard) - Geliştiriliyor.
+    - [x] Sürpriz Maçlar Sekmesi (İY/MS: 1/2 veya 2/1)
 
 
 ### A. Referans Tabloları (Yönetim)
@@ -115,3 +117,26 @@ CREATE TABLE matches (
     -- GOL ARALIĞI
     tg_0_1 FLOAT, tg_2_3 FLOAT, tg_4_5 FLOAT, tg_6_plus FLOAT
 );
+
+---
+
+## 5. Roadmap
+
+### 5.1 Now (This Sprint)
+- [x] **Web UI: Sürpriz Maçlar Sekmesi**
+    - [x] `web-ui` altında yeni `surprise` sayfası.
+    - [x] İY/MS 1/2 ve 2/1 olan maçları filtreleme algoritması.
+    - [x] Header navigasyonu (Fikstür / Sürpriz).
+    - [x] Sezon ve Lig filtresi (Client-Side).
+
+---
+
+## 11) Changelog
+
+**2026-01-12** — **Web UI: Sürpriz Maçlar ve Filtreleme** (by Antigravity)
+  - **Why:** Kullanıcının potansiyel "sürpriz" (İY/MS 1/2 veya 2/1) maçları analiz edebilmesi için.
+  - **Scope:** `web-ui/app/surprise`, `web-ui/components/SurpriseTable.tsx`, `web-ui/components/Header.tsx`
+  - **Notes:**
+    - `SurpriseTable` componenti ile client-side filtreleme (Sezon/Lig) eklendi.
+    - Hydration hatası CSS Grid yapısı ile çözüldü.
+    - Mobil uyumlu tablo tasarımı uygulandı.
