@@ -175,19 +175,38 @@ def process_full_match(match_url, driver):
                     pass
 
     # Kaydet
-    supabase.table("matches").upsert(row, on_conflict="match_code").execute()
-    
-    # Kalite Kontrolü Dönüşü
-    required_fields = [home, away, match_info["league"], match_info["season"], score_ft, score_ht]
-    if any(f is None for f in required_fields):
-        missing = []
-        if not home: missing.append("home")
-        if not away: missing.append("away")
-        if not match_info["league"]: missing.append("league")
-        if not match_info["season"]: missing.append("season")
-        if not score_ft: missing.append("score_ft")
-        if not score_ht: missing.append("score_ht")
-        
+    # 1. Her durumda Weekly Fixtures tablosunu güncelle (Canlı Takip için)
+    # Bu tablo Web UI tarafından okunur.
+    supabase.table("weekly_fixtures").upsert(row, on_conflict="match_code").execute()
+
+    # Kalite Kontrolü ve Yönlendirme
+    is_future_match = False
+    if match_info["match_date"]:
+        try:
+            mdate = datetime.strptime(match_info["match_date"], '%Y-%m-%d %H:%M:%S')
+            if mdate > datetime.now(): is_future_match = True
+        except: pass
+
+    # Zorunlu alan kontrolü
+    missing = []
+    if not home: missing.append("home")
+    if not away: missing.append("away")
+    if not match_info["league"]: missing.append("league")
+    if not match_info["season"]: missing.append("season")
+
+    if missing:
         return "BAD_DATA", f"Eksik Veri: {', '.join(missing)}"
-        
-    return "SUCCESS", None
+
+    # 2. Eğer maç oynanmış ve bitmişse (Skor var ve gelecekte değil)
+    # Ana 'matches' tablosuna arşivle ve kuyruktan düş (SUCCESS)
+    if not is_future_match and score_ft and score_ht:
+        supabase.table("matches").upsert(row, on_conflict="match_code").execute()
+        return "SUCCESS", None
+    
+    # 3. Eğer maç henüz oynanmamışsa (Fikstür)
+    # Kuyrukta kalmaya devam etsin (MONITORING)
+    if is_future_match or (not score_ft):
+        return "MONITORING", "Fikstür takibinde (Weekly Fixtures güncellendi)"
+
+    # Buraya düşerse: Geçmiş tarihli ama skoru yok. Hata.
+    return "BAD_DATA", "Geçmiş maç ama skor eksik"

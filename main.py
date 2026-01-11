@@ -42,9 +42,19 @@ def reset_errors():
     print(f"✅ {len(result.data)} kayıt sıfırlandı.")
 
 def fill_queue():
-    """Sezonlardan maç linklerini kuyruğa ekler."""
+    """Sezonlardan maç linklerini kuyruğa ekler (Sadece Geçmiş)."""
     from queue_manager import fill_queue_from_db
-    fill_queue_from_db()
+    fill_queue_from_db(mode='history')
+
+def update_fixtures():
+    """Gelecek maçları kuyruğa ekler (Fikstür)."""
+    from queue_manager import fill_queue_from_db
+    fill_queue_from_db(mode='fixtures')
+
+def repair_queue():
+    """Kuyruktaki bozulmuş statüleri onarır."""
+    from repair_queue import repair_queue_status
+    repair_queue_status()
 
 def run_worker():
     """Scraper worker'ı başlatır."""
@@ -61,9 +71,11 @@ def main():
     
     commands = {
         "fill-queue": fill_queue,
+        "update-fixtures": update_fixtures,
         "run-worker": run_worker,
         "status": show_status,
         "reset-errors": reset_errors,
+        "repair-queue": repair_queue,
     }
     
     if command in commands:

@@ -27,8 +27,11 @@ def run_worker():
     print("🔄 Worker başlatılıyor... (Supabase limit: 500/döngü)")
     
     while True:
-        # Supabase API limitine takılmamak için döngü içinde çekiyoruz
-        response = supabase.table("match_queue").select("*").neq("status", "SUCCESS").limit(500).execute()
+        # PENDING: İlk kez taranacaklar
+        # ERROR: Hata almış tekrar denenecekler
+        # MONITORING: Fikstür maçları (sürekli takip)
+        # last_try_at ile sırala ki en eski taranan önce gelsin.
+        response = supabase.table("match_queue").select("*").neq("status", "SUCCESS").order("last_try_at", desc=False, nulls_first=True).limit(500).execute()
         queue = response.data
         
         if not queue:
