@@ -1,7 +1,5 @@
 "use client"
 
-import { useState, useMemo } from 'react'
-
 interface Match {
     id: number
     home_team: string
@@ -18,90 +16,14 @@ interface Match {
 }
 
 interface SurpriseTableProps {
-    initialMatches: Match[]
+    matches: Match[]
 }
 
-export default function SurpriseTable({ initialMatches }: SurpriseTableProps) {
-    const [selectedSeason, setSelectedSeason] = useState<string>('Tümü')
-    const [selectedLeague, setSelectedLeague] = useState<string>('Tümü')
-
-    // Extract unique values for filters
-    const seasons = useMemo(() => {
-        const unique = new Set(initialMatches.map(m => m.season))
-        return ['Tümü', ...Array.from(unique).sort().reverse()]
-    }, [initialMatches])
-
-    const leagues = useMemo(() => {
-        const unique = new Set(initialMatches.map(m => m.league))
-        return ['Tümü', ...Array.from(unique).sort()]
-    }, [initialMatches])
-
-    // Filter logic
-    const filteredMatches = useMemo(() => {
-        return initialMatches.filter(match => {
-            const seasonMatch = selectedSeason === 'Tümü' || match.season === selectedSeason
-            const leagueMatch = selectedLeague === 'Tümü' || match.league === selectedLeague
-            return seasonMatch && leagueMatch
-        })
-    }, [initialMatches, selectedSeason, selectedLeague])
-
-    const resetFilters = () => {
-        setSelectedSeason('Tümü')
-        setSelectedLeague('Tümü')
-    }
-
+export default function SurpriseTable({ matches }: SurpriseTableProps) {
     return (
         <div className="space-y-6">
-            {/* Filter Bar */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row gap-4 items-center justify-between">
-                <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                    {/* Season Filter */}
-                    <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-gray-500 mb-1 ml-1">Sezon</label>
-                        <select
-                            value={selectedSeason}
-                            onChange={(e) => setSelectedSeason(e.target.value)}
-                            className="bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 min-w-[140px]"
-                        >
-                            {seasons.map(season => (
-                                <option key={season} value={season}>{season}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* League Filter */}
-                    <div className="flex flex-col">
-                        <label className="text-xs font-semibold text-gray-500 mb-1 ml-1">Lig</label>
-                        <select
-                            value={selectedLeague}
-                            onChange={(e) => setSelectedLeague(e.target.value)}
-                            className="bg-gray-50 border border-gray-200 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 min-w-[200px]"
-                        >
-                            {leagues.map(league => (
-                                <option key={league} value={league}>{league}</option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
-
-                {/* Counter & Reset */}
-                <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-                    <span className="text-sm font-medium text-gray-500">
-                        Gösterilen: <strong className="text-gray-900">{filteredMatches.length}</strong>
-                    </span>
-                    {(selectedSeason !== 'Tümü' || selectedLeague !== 'Tümü') && (
-                        <button
-                            onClick={resetFilters}
-                            className="text-sm text-red-600 hover:text-red-800 font-medium hover:underline"
-                        >
-                            Filtreleri Temizle
-                        </button>
-                    )}
-                </div>
-            </div>
-
             {/* Empty State */}
-            {filteredMatches.length === 0 ? (
+            {matches.length === 0 ? (
                 <div className="text-center py-20 bg-white rounded-lg shadow border border-gray-100">
                     <div className="text-4xl mb-2">🌪️</div>
                     <h2 className="text-xl text-gray-600">Bu kriterlere uygun maç bulunamadı.</h2>
@@ -121,7 +43,7 @@ export default function SurpriseTable({ initialMatches }: SurpriseTableProps) {
 
                     {/* DATA ROWS */}
                     <div className="divide-y divide-gray-200">
-                        {filteredMatches.map((match: any) => (
+                        {matches.map((match: any) => (
                             <div key={match.id} className="grid grid-cols-1 md:grid-cols-12 hover:bg-gray-50 transition-colors py-4 px-4 items-center gap-4 md:gap-0">
 
                                 {/* Tarih */}

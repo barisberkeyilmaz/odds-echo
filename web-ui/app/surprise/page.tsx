@@ -69,7 +69,7 @@ async function getSurpriseMatches() {
     return surpriseMatches
 }
 
-import SurpriseTable from '@/components/SurpriseTable'
+import SurpriseDashboard from '@/components/SurpriseDashboard'
 
 export default async function SurprisePage() {
     const matches = await getSurpriseMatches()
@@ -85,14 +85,14 @@ export default async function SurprisePage() {
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     </div>
                     <div>
-                        <h3 className="font-bold text-gray-900">Sürpriz Analizi (Tablo)</h3>
+                        <h3 className="font-bold text-gray-900">Sürpriz Analizi (Grafikler)</h3>
                         <p className="text-sm text-gray-500">
-                            <strong>İlk Yarı</strong> ve <strong>Maç Sonucu</strong> kazananının değiştiği (1/2 veya 2/1) karşılaşmalar. Tablo üzerinden filtreleme yapabilirsiniz.
+                            <strong>İlk Yarı</strong> ve <strong>Maç Sonucu</strong> kazananının değiştiği (1/2 veya 2/1) karşılaşmalar. Filtrelere göre grafikler ve tablo güncellenir.
                         </p>
                     </div>
                 </div>
 
-                <SurpriseTable initialMatches={matches} />
+                <SurpriseDashboard initialMatches={matches} />
             </div>
         </main>
     )

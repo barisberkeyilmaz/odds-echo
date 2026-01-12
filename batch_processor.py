@@ -31,7 +31,7 @@ def run_worker():
         # ERROR: Hata almış tekrar denenecekler
         # MONITORING: Fikstür maçları (sürekli takip)
         # last_try_at ile sırala ki en eski taranan önce gelsin.
-        response = supabase.table("match_queue").select("*").neq("status", "SUCCESS").order("last_try_at", desc=False, nulls_first=True).limit(500).execute()
+        response = supabase.table("match_queue").select("*").neq("status", "SUCCESS").order("last_try_at", desc=False).limit(500).execute()
         queue = response.data
         
         if not queue:
