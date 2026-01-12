@@ -1,6 +1,6 @@
 import time
 from config import supabase
-from link_harvester import fetch_season_matches
+from link_harvester import fetch_season_matches, get_current_week
 
 def fill_queue_from_db(mode="history"):
     """
@@ -23,7 +23,13 @@ def fill_queue_from_db(mode="history"):
         season_name = f"{s['leagues']['name']} {s['season_year']}"
         print(f"🏆 İşleniyor: {season_name}")
         
-        matches = fetch_season_matches(s['mackolik_id'], s['total_weeks'])
+        if mode == 'fixtures':
+            # Fikstür modunda sadece aktif haftayı bul ve tara
+            target_week = get_current_week(s['mackolik_id'])
+            matches = fetch_season_matches(s['mackolik_id'], s['total_weeks'], target_week=target_week)
+        else:
+            # Geçmiş modunda hepsini tara
+            matches = fetch_season_matches(s['mackolik_id'], s['total_weeks'])
         
         # Toplu Kayıt Hazırlığı
         queue_data = []
@@ -33,8 +39,14 @@ def fill_queue_from_db(mode="history"):
             is_valid_fixture = (m['status'] != 'MS' and m['status'] != 'Ert')
             
             should_add = False
-            if mode == 'history' and is_finished: should_add = True
-            elif mode == 'fixtures' and is_valid_fixture: should_add = True
+            if mode == 'history':
+                # History modunda sadece bitmiş maçlar
+                if is_finished: should_add = True
+            elif mode == 'fixtures':
+                # Fixture modunda her şeyi al (çünkü zaten haftayı daralttık)
+                # Ama yine de 'Ert' olanları veya gereksizleri eleyebiliriz.
+                # Kullanıcı "ekranda gördüğüm" dediği için o haftadaki bitmiş maçı da analize katmak isteyebilir.
+                if m['status'] != 'Ert': should_add = True
             
             if should_add:
                 # Fikstür maçları sürekli takip edilmeli (MONITORING)

@@ -175,18 +175,23 @@ def process_full_match(match_url, driver):
                     pass
 
     # Kaydet
-    # 1. Her durumda Weekly Fixtures tablosunu güncelle (Canlı Takip için)
-    # Bu tablo Web UI tarafından okunur.
-    supabase.table("weekly_fixtures").upsert(row, on_conflict="match_code").execute()
+    # Tek Tablo Stratejisi: Her şeyi 'matches' tablosuna yaz.
+    # Statüsü ne olursa olsun (Oynanmış, Oynanacak) fark etmez.
+    
+    supabase.table("matches").upsert(row, on_conflict="match_code").execute()
 
-    # Kalite Kontrolü ve Yönlendirme
+    # Kalite Kontrolü ve Yönlendirme (Önce tarihi parse edelim)
     is_future_match = False
+    
     if match_info["match_date"]:
         try:
             mdate = datetime.strptime(match_info["match_date"], '%Y-%m-%d %H:%M:%S')
-            if mdate > datetime.now(): is_future_match = True
+            now = datetime.now()
+            if mdate > now: is_future_match = True
         except: pass
-
+    
+    # Kuyruk Yönetimi için Dönüş Değerleri
+    
     # Zorunlu alan kontrolü
     missing = []
     if not home: missing.append("home")
@@ -197,16 +202,13 @@ def process_full_match(match_url, driver):
     if missing:
         return "BAD_DATA", f"Eksik Veri: {', '.join(missing)}"
 
-    # 2. Eğer maç oynanmış ve bitmişse (Skor var ve gelecekte değil)
-    # Ana 'matches' tablosuna arşivle ve kuyruktan düş (SUCCESS)
+    # 1. Eğer maç bitmişse (Skor var ve gelecekte değil) -> SUCCESS
     if not is_future_match and score_ft and score_ht:
-        supabase.table("matches").upsert(row, on_conflict="match_code").execute()
         return "SUCCESS", None
     
-    # 3. Eğer maç henüz oynanmamışsa (Fikstür)
-    # Kuyrukta kalmaya devam etsin (MONITORING)
+    # 2. Eğer maç henüz oynanmamışsa -> MONITORING (Takibe devam)
     if is_future_match or (not score_ft):
-        return "MONITORING", "Fikstür takibinde (Weekly Fixtures güncellendi)"
+        return "MONITORING", "Fikstür takibinde"
 
-    # Buraya düşerse: Geçmiş tarihli ama skoru yok. Hata.
+    # Buraya düşerse: Geçmiş tarihli ama skoru yok.
     return "BAD_DATA", "Geçmiş maç ama skor eksik"

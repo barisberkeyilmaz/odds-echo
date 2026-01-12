@@ -2,58 +2,40 @@ from config import supabase
 import time
 
 def repair_queue_status():
-    print("🚑 Kuyruk Onarım Modülü Başlatılıyor...")
+    print("🚑 Kuyruk Onarım Modülü Başlatılıyor (Matches -> Queue Sync)...")
     
-    # 1. Matches tablosundaki tüm ID'leri çek (Pagination ile)
-    # 16.000 veri olduğu için parça parça çekmek gerekebilir, ama şimdilik limitli çekelim
-    # Daha iyi yol: match_queue'da STATUS='MONITORING' veya 'PENDING' olanları alıp,
-    # "Bunlar matches'da var mı?" diye sormak.
-    
-    # Adım 1: Hatalı olabilecek kayıtları çek (MONITORING olarak işaretlenmiş ama aslında bitmiş olabilirler)
-    print("📡 Kuyruktaki MONITORING/PENDING kayıtları analiz ediliyor...")
+    # Kullanıcının talebi: "matches içini kontrol edecek tüm maçları gezecek"
+    # Strateji: Matches tablosunu parça parça oku, validasyon yap, Queue tablosunu güncelle.
     
     page_size = 1000
     offset = 0
-    total_fixed = 0
+    total_synced = 0
     
-    while True:
-        # PENDING, MONITORING ve BAD_DATA olanları kontrol et
-        response = supabase.table("match_queue")\
-            .select("match_code, status")\
-            .in_("status", ["MONITORING", "PENDING", "BAD_DATA"])\
-            .range(offset, offset + page_size - 1)\
-            .execute()
-            
-        queue_items = response.data
-        if not queue_items:
-            break
-            
-        print(f"   🔍 {len(queue_items)} aday kayıt inceleniyor (Offset: {offset})...")
+    # Matches tablosundaki toplam kayıt sayısı
+    try:
+        count_res = supabase.table("matches").select("*", count="exact", head=True).execute()
+        total_matches = count_res.count
+        print(f"📊 Matches tablosunda toplam {total_matches} kayıt var.")
+    except Exception as e:
+        print(f"❌ Sayaç hatası: {e}")
+        return
+
+    while offset < total_matches:
+        print(f"   🔄 Batch işleniyor: {offset} - {offset + page_size} arası...")
         
-        # Bu ID'lerin hangileri MATCHES tablosunda var?
-        match_codes = [q['match_code'] for q in queue_items]
-        
-        # Matches tablosunda bu kodları ara
-        sub_batch_size = 100
-        for i in range(0, len(match_codes), sub_batch_size):
-            sub_batch_codes = match_codes[i : i + sub_batch_size]
-            sub_batch_items = queue_items[i : i + sub_batch_size]
+        try:
+            # Matches'dan verileri çek
+            response = supabase.table("matches").select("*").range(offset, offset + page_size - 1).execute()
+            rows = response.data
             
-            # Matches tablosunda var mı? (Veri kalitesini kontrol etmek için tüm sütunları çek)
-            res_matches = supabase.table("matches")\
-                .select("*")\
-                .in_("match_code", sub_batch_codes)\
-                .execute()
-                
-            found_matches = res_matches.data
+            if not rows:
+                break
             
-            valid_success_ids = []
-            invalid_bad_data_ids = []
+            updates_success = []
+            updates_bad_data = []
             
-            for m in found_matches:
-                # Veri Kalitesi Kontrolü (Scraper Engine mantığının aynısı)
-                # Fikstür durumunu burada kontrol etmiyoruz çünkü 'matches' tablosunda sadece bitmiş maçlar olmalı.
-                
+            for m in rows:
+                # Validasyon (Scraper mantığı)
                 is_valid = True
                 missing_fields = []
                 
@@ -62,54 +44,71 @@ def repair_queue_status():
                 if not m.get('league'): missing_fields.append('league')
                 if not m.get('season'): missing_fields.append('season')
                 if not m.get('score_ft'): missing_fields.append('score_ft')
-                # score_ht opsiyonel/zorunlu durumu: Scraper'da zorunlu.
                 if not m.get('score_ht'): missing_fields.append('score_ht')
                 
-                if missing_fields:
-                    is_valid = False
+                # Sadece bitmiş maçlar (skoru olanlar) SUCCESS olabilir.
+                # Eğer matches içinde skoru olmayan (fikstür) varsa, bu SUCCESS değildir.
+                # Ancak kullanıcı "tüm maçları gezecek" dedi. Fikstürler MONITORING olmalı.
                 
-                if is_valid:
-                    valid_success_ids.append(m['match_code'])
+                # Ancak matches tablosu artık hem geçmiş hem fikstür barındırıyor.
+                # O yüzden statüyü belirlerken tarihe ve skora bakmalıyız.
+                
+                status_to_set = "PENDING" # Default
+                
+                has_score = bool(m.get('score_ft') and m.get('score_ht'))
+                
+                if missing_fields:
+                    # Eksik saha varsa BAD_DATA
+                    status_to_set = "BAD_DATA"
+                elif has_score:
+                    # Skoru tam ise SUCCESS
+                    status_to_set = "SUCCESS"
                 else:
-                    invalid_bad_data_ids.append(m['match_code'])
-
-            # 1. Verisi SAĞLAM olanları SUCCESS yap
-            if valid_success_ids:
+                    # Skoru yoksa ama matches tablosundaysa MONITORING (Fikstür)
+                    status_to_set = "MONITORING"
+                
+                # Queue'yu güncellemek için listeye ekle
+                # Upsert kullanamayız çünkü queue'daki diğer fieldları ezmek istemeyiz (url, week vs?)
+                # Ama repair sadece status düzeltiyorsa update yeterli.
+                # Ama update için queue'da kaydın olması lazım. Repair queue olmayan bir kaydı yaratmalı mı?
+                # Genelde fill-queue ile yaratılır. Biz sadece var olanı güncelleyelim.
+                
+                # Performans için tek tek update yapmak yerine batch update yapabiliriz ama
+                # Supabase'de farklı ID'ler için farklı değerlerle batch update zordur.
+                # Bu yüzden RPC veya tek tek update gerekir. Ortalama hız için gruplama yapabiliriz.
+                
+                if status_to_set == "SUCCESS":
+                    updates_success.append(m['match_code'])
+                elif status_to_set == "BAD_DATA":
+                    updates_bad_data.append(m['match_code'])
+                # MONITORING durumunu ellemiyoruz, çünkü scraper onu yönetiyor. 
+                # Sadece kesin bitmişleri SUCCESS işaretleyelim.
+            
+            # Toplu Güncellemeler
+            if updates_success:
                 supabase.table("match_queue")\
-                    .update({"status": "SUCCESS", "error_log": "Repaired by script (Verified Valid Data)"})\
-                    .in_("match_code", valid_success_ids)\
+                    .update({"status": "SUCCESS", "error_log": "Synced from matches (Valid)"})\
+                    .in_("match_code", updates_success)\
                     .execute()
-                total_fixed += len(valid_success_ids)
-                print(f"      ✅ {len(valid_success_ids)} kayıt doğrulanıp SUCCESS yapıldı.")
-            
-            # 2. Verisi BOZUK olanları BAD_DATA yap
-            if invalid_bad_data_ids:
+                print(f"      ✅ {len(updates_success)} maç -> SUCCESS")
+                
+            if updates_bad_data:
                 supabase.table("match_queue")\
-                    .update({"status": "BAD_DATA", "error_log": "Repaired by script (Found Invalid Data in matches)"})\
-                    .in_("match_code", invalid_bad_data_ids)\
+                    .update({"status": "BAD_DATA", "error_log": "Synced from matches (Invalid Data)"})\
+                    .in_("match_code", updates_bad_data)\
                     .execute()
-                print(f"      ⚠️ {len(invalid_bad_data_ids)} kayıt matches tablosunda bulundu ama eksik veri içeriyor -> BAD_DATA.")
-            
-            # found_so_success listesi artık valid olanlar + invalid olanların toplamı (yani matches'da bulunanlar)
-            found_match_codes = [m['match_code'] for m in found_matches]
-            
-            # 3. Matches'da yok ama BAD_DATA -> PENDING yap (Tekrar denensin)
-            missing_in_matches = [item for item in sub_batch_items if item['match_code'] not in found_match_codes]
-            
-            # Bunlardan statüsü BAD_DATA olanları bul
-            to_reset_pending = [item['match_code'] for item in missing_in_matches if item['status'] == 'BAD_DATA']
-            
-            if to_reset_pending:
-                 supabase.table("match_queue")\
-                    .update({"status": "PENDING", "error_log": "Reset from BAD_DATA by repair script"})\
-                    .in_("match_code", to_reset_pending)\
-                    .execute()
-                 print(f"      🔄 {len(to_reset_pending)} BAD_DATA kayıt PENDING'e çevrildi.")
+                print(f"      ⚠️ {len(updates_bad_data)} maç -> BAD_DATA")
 
-        offset += page_size
+            total_synced += len(rows)
+            offset += len(rows)
+            
+        except Exception as e:
+            print(f"      ❌ Hata: {e}")
+            break
+            
         time.sleep(0.5)
 
-    print(f"\n🎉 Onarım Tamamlandı. Toplam Düzeltilen: {total_fixed}")
+    print(f"\n🎉 Onarım Tamamlandı. Taranan Matches Kaydı: {total_synced}")
 
 if __name__ == "__main__":
     repair_queue_status()

@@ -8,6 +8,7 @@ Kullanım:
     python main.py run-worker    # Scraper'ı başlat
     python main.py status        # Kuyruk durumunu göster
     python main.py reset-errors  # Hatalı kayıtları sıfırla
+    python main.py create-tables # Tabloları oluştur (weekly_fixtures vb.)
 """
 
 import sys
@@ -59,7 +60,13 @@ def repair_queue():
 def run_worker():
     """Scraper worker'ı başlatır."""
     from batch_processor import run_worker as start_worker
+    from batch_processor import run_worker as start_worker
     start_worker()
+
+def create_tables_cmd():
+    """Veritabanı tablolarını oluşturur."""
+    from create_tables import create_tables
+    create_tables()
 
 def main():
     if len(sys.argv) < 2:
@@ -75,7 +82,9 @@ def main():
         "run-worker": run_worker,
         "status": show_status,
         "reset-errors": reset_errors,
+        "reset-errors": reset_errors,
         "repair-queue": repair_queue,
+        "create-tables": create_tables_cmd,
     }
     
     if command in commands:
