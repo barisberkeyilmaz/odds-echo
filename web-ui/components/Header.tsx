@@ -37,6 +37,18 @@ export default function Header({ totalMatches }: { totalMatches?: number }) {
                 >
                     🎁 Sürpriz (İY/MS)
                 </Link>
+                <Link
+                    href="/surprise-draw"
+                    className={`px-4 py-2 rounded-t-lg font-medium transition-colors ${isActive('/surprise-draw')}`}
+                >
+                    🎯 Sürpriz (1/0-2/0)
+                </Link>
+                <Link
+                    href="/odds-search"
+                    className={`px-4 py-2 rounded-t-lg font-medium transition-colors ${isActive('/odds-search')}`}
+                >
+                    🔎 Oran Arama
+                </Link>
             </nav>
         </header>
     )

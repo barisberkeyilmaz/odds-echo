@@ -24,3 +24,75 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.fixture-calendar {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+  padding: 12px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.fixture-calendar .react-datepicker__header {
+  background: transparent;
+  border-bottom: none;
+  padding-top: 4px;
+}
+
+.fixture-calendar .react-datepicker__current-month {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.fixture-calendar .react-datepicker__day-name,
+.fixture-calendar .react-datepicker__day {
+  width: 36px;
+  line-height: 36px;
+  margin: 2px;
+  border-radius: 10px;
+}
+
+.fixture-calendar .react-datepicker__day {
+  color: #374151;
+  font-weight: 500;
+}
+
+.fixture-calendar .react-datepicker__day--keyboard-selected,
+.fixture-calendar .react-datepicker__day--selected {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.fixture-calendar .react-datepicker__day--today {
+  border: 1px solid #93c5fd;
+}
+
+.fixture-calendar .react-datepicker__navigation {
+  top: 12px;
+}
+
+.fixture-calendar .react-datepicker__navigation-icon::before {
+  border-color: #6b7280;
+}
+
+.fixture-calendar .react-datepicker__day--outside-month {
+  color: #d1d5db;
+}
+
+.fixture-day--available {
+  position: relative;
+}
+
+.fixture-day--available::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #10b981;
+}

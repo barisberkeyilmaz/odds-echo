@@ -1,11 +1,8 @@
-import { supabase } from '@/lib/supabaseClient'
 import Header from '@/components/Header'
+import SurpriseDrawDashboard from '@/components/SurpriseDrawDashboard'
+import { supabase } from '@/lib/supabaseClient'
 
-// Dinamik olmasını sağla
-// Dinamik olmasını sağla
 export const dynamic = 'force-dynamic'
-// Force refresh: Premium Card Layout
-
 
 interface Match {
     id: number
@@ -16,22 +13,12 @@ interface Match {
     season: string
     score_ht: string
     score_ft: string
-    ms_1: number | null
-    ms_x: number | null
-    ms_2: number | null
-    iyms_11: number | null
     iyms_1x: number | null
-    iyms_12: number | null
-    iyms_x1: number | null
-    iyms_xx: number | null
-    iyms_x2: number | null
-    iyms_21: number | null
     iyms_2x: number | null
-    iyms_22: number | null
-    ms_status: string
+    surpriseType?: '1/0' | '2/0'
 }
 
-async function getSurpriseMatches() {
+async function getSurpriseDrawMatches() {
     const { data, error } = await supabase
         .from('matches')
         .select('*')
@@ -46,53 +33,53 @@ async function getSurpriseMatches() {
     const matches = data as Match[]
     const surpriseMatches: Match[] = []
 
-    for (const m of matches) {
-        if (!m.score_ht || !m.score_ft) continue
+    for (const match of matches) {
+        if (!match.score_ht || !match.score_ft) continue
 
-        const htParts = m.score_ht.split('-').map(s => parseInt(s.trim()))
-        const ftParts = m.score_ft.split('-').map(s => parseInt(s.trim()))
+        const htParts = match.score_ht.split('-').map(s => parseInt(s.trim()))
+        const ftParts = match.score_ft.split('-').map(s => parseInt(s.trim()))
 
         if (htParts.length !== 2 || ftParts.length !== 2) continue
 
         const [htH, htA] = htParts
         const [ftH, ftA] = ftParts
 
-        const is1to2 = (htH > htA) && (ftH < ftA)
-        const is2to1 = (htH < htA) && (ftH > ftA)
+        if (Number.isNaN(htH) || Number.isNaN(htA) || Number.isNaN(ftH) || Number.isNaN(ftA)) continue
 
-        if (is1to2 || is2to1) {
-            (m as any).surpriseType = is1to2 ? '1/2' : '2/1'
-            surpriseMatches.push(m)
+        const is1to0 = htH > htA && ftH === ftA
+        const is2to0 = htH < htA && ftH === ftA
+
+        if (is1to0 || is2to0) {
+            match.surpriseType = is1to0 ? '1/0' : '2/0'
+            surpriseMatches.push(match)
         }
     }
 
     return surpriseMatches
 }
 
-import SurpriseDashboard from '@/components/SurpriseDashboard'
-
-export default async function SurprisePage() {
-    const matches = await getSurpriseMatches()
+export default async function SurpriseDrawPage() {
+    const matches = await getSurpriseDrawMatches()
 
     return (
         <main className="min-h-screen bg-gray-50 p-3 md:p-5 font-sans">
             <div className="max-w-[1400px] mx-auto">
                 <Header totalMatches={matches.length} />
 
-                {/* Info Box */}
                 <div className="mb-8 flex items-center p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
-                    <div className="p-2 bg-blue-100 rounded-lg text-blue-600 mr-4">
+                    <div className="p-2 bg-sky-100 rounded-lg text-sky-600 mr-4">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     </div>
                     <div>
-                        <h3 className="font-bold text-gray-900">Sürpriz Analizi (Grafikler)</h3>
+                        <h3 className="font-bold text-gray-900">Sürpriz Analizi (1/0 & 2/0)</h3>
                         <p className="text-sm text-gray-500">
-                            <strong>İlk Yarı</strong> ve <strong>Maç Sonucu</strong> kazananının değiştiği (1/2 veya 2/1) karşılaşmalar. Filtrelere göre grafikler ve tablo güncellenir.
+                            <strong>İlk Yarı</strong> lideri olan takımın, maç sonunda <strong>beraberliğe</strong> düşürdüğü (1/0 veya 2/0) karşılaşmalar.
+                            Filtrelere göre grafikler ve tablo güncellenir.
                         </p>
                     </div>
                 </div>
 
-                <SurpriseDashboard initialMatches={matches} />
+                <SurpriseDrawDashboard initialMatches={matches} />
             </div>
         </main>
     )
