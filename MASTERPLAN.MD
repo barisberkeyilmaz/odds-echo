@@ -12,12 +12,14 @@ Bu projenin amacı, dünya genelindeki majör futbol liglerinin geçmiş maç ve
 Sistem **"Dağıtıcı - İşçi" (Dispatcher - Worker)** mimarisi üzerine kuruludur. Bu yapı, veri toplama sürecinin kesintisiz ve hatasız olmasını sağlar.
 
 *   **Veritabanı:** Supabase (PostgreSQL).
-*   **Programlama:** Python (Selenium & Requests).
-*   **Çalışma Ortamı:** Local Python Environment (Terminal / VSCode).
+*   **Programlama (Scraper):** Python (Selenium & Requests).
+*   **Web UI:** Next.js (React) + Supabase istemcisi.
+*   **Çalışma Ortamı:** Local Python Environment (Terminal / VSCode) + `web-ui`.
 *   **Veri Kaynağı:** Mackolik Arşiv Sistemi.
+*   **İş Akışı:** `queue_manager.py` fikstürleri kuyruğa yazar → `batch_processor.py` işleri paketleyerek işler → `scraper_engine.py` veri toplar.
 
 ## 3. Veritabanı Şeması (Database Schema)
-(Mevcut şema geçerlidir, detaylar yukarıdadır)
+Şema, tek kaynak gerçeği olarak `matches` tablosu üzerinde ilerler. `weekly_fixtures` kaldırıldı.
 
 ---
 
@@ -27,17 +29,22 @@ Sistem **"Dağıtıcı - İşçi" (Dispatcher - Worker)** mimarisi üzerine kuru
 - [x] **Veritabanı Kurulumu:** Supabase tabloları (`leagues`, `seasons`, `matches`, `match_queue`) hazır.
 - [x] **Lokal Migrasyon:** Proje Colab'dan yerel Python yapısına (`.py` dosyaları) taşındı.
 - [x] **CLI Arayüzü:** `main.py` üzerinden tüm operasyonlar yönetilebiliyor.
+- [x] **Kuyruk Onarımı:** Hatalı durumları düzeltmek için `repair_queue.py` eklendi.
+- [x] **Fikstür Güncelleme:** `update-fixtures` komutu ile oynanmamış maçlar kuyruğa eklenebiliyor.
 - [x] **Scraper Motoru İyileştirmesi:**
     - HTML parsing yerine Regex ve JS argümanlarından veri çekme yapısı kuruldu.
     - Hatalı (Null) oran ve skor sorunları çözüldü.
     - Dinamik bekleme süreleri eklendi.
 - [x] **Sonsuz Döngü Worker:** Supabase API limitine takılmadan tüm kuyruğu eriten akıllı paket sistemi (`batch_processor.py`) yazıldı.
+- [x] **Web UI: Fikstür Paneli:** Tarih bazlı fikstür listesi ve detay tablosu (`web-ui/app/page.tsx`).
+- [x] **Web UI: Oran Arama:** Çoklu oran girişli arama ve sonuç dağılımları (`web-ui/app/odds-search`).
+- [x] **Web UI: Benzerlik Analizi:** Maç detayında benzer oranlı geçmiş maçlar (`web-ui/app/match/[id]`).
+- [x] **Web UI: Analiz Dashboard:** Filtreli benzerlik, kategori istatistikleri ve sonuç dağılımları (`web-ui/app/analysis/[id]`).
 
 ### ⏳ Geliştirme Süreci (Next Steps)
-- [ ] Veri analizi ve istatistik modülü (Analysis).
-- [ ] Veri analizi ve istatistik modülü (Analysis).
-- [/] Web Arayüzü (Dashboard) - Geliştiriliyor.
-    - [x] Sürpriz Maçlar Sekmesi (İY/MS: 1/2 veya 2/1)
+- [ ] Veri kalite kontrol raporu (eksik skor/oran, lig/season boşlukları).
+- [ ] Supabase sorgu maliyetini düşürmek için sayfalama ve önbellek stratejisi.
+- [ ] Web UI için basit test ve smoke-check akışı.
 
 
 ### A. Referans Tabloları (Yönetim)
@@ -101,7 +108,6 @@ CREATE TABLE matches (
     
     -- ORANLAR (Kapanış Oranları)
     ms_1 FLOAT, ms_x FLOAT, ms_2 FLOAT,
-    cs_1x FLOAT, cs_12 FLOAT, cs_x2 FLOAT,
     
     -- İY/MS ORANLARI
     iyms_11 FLOAT, iyms_1x FLOAT, iyms_12 FLOAT,
@@ -116,22 +122,42 @@ CREATE TABLE matches (
     -- GOL ARALIĞI
     tg_0_1 FLOAT, tg_2_3 FLOAT, tg_4_5 FLOAT, tg_6_plus FLOAT
 );
+```
 
 ---
 
 ## 5. Roadmap
 
 ### 5.1 Now (This Sprint)
-- [x] **Web UI: Sürpriz Maçlar Sekmesi**
-    - [x] `web-ui` altında yeni `surprise` sayfası.
-    - [x] İY/MS 1/2 ve 2/1 olan maçları filtreleme algoritması.
-    - [x] Header navigasyonu (Fikstür / Sürpriz).
-    - [x] Sezon ve Lig filtresi (Client-Side).
+- [x] **Web UI: Fikstür + Analiz Sayfaları**
+    - [x] `web-ui` altında `odds-search`, `match/[id]`, `analysis/[id]`.
+    - [x] Lig/Sezon filtreleri ve sonuç dağılımları.
+    - [x] Oran benzerliği eşleştirme ve kategori istatistikleri.
 
 ---
 
 ## 11) Changelog
 
+**2026-01-14** — **Web UI: Sürpriz Ekranları Kaldırıldı** (by Antigravity)
+  - **Why:** Ürün odağını temel analiz akışlarına çekmek.
+  - **Scope:** `web-ui/app/surprise`, `web-ui/app/surprise-draw`, `web-ui/components/SurpriseDashboard.tsx`, `web-ui/components/SurpriseTable.tsx`, `web-ui/components/SurpriseDrawDashboard.tsx`, `web-ui/components/SurpriseDrawTable.tsx`, `web-ui/components/Header.tsx`
+  - **Notes:** Sürpriz sayfaları ve ilgili dashboard bileşenleri kaldırıldı, header navigasyonundan çıkarıldı.
+**2026-01-14** — **Web UI: Oran Arama ve Analiz Genişletmeleri** (by Antigravity)
+  - **Why:** Çoklu oran araması ve sonuç dağılımlarını tek panelde görmek.
+  - **Scope:** `web-ui/app/odds-search`, `web-ui/components/OddsSearchDashboard.tsx`
+  - **Notes:**
+    - Filtreli oran arama ve sonuç dağılımları eklendi.
+    - Kategori bazında sonuç dağılımı görünümü genişletildi.
+**2026-01-14** — **Web UI: Benzerlik Analizi Sayfaları** (by Antigravity)
+  - **Why:** Tek maç üzerinden benzer oranlı geçmiş maçları ve analiz istatistiklerini sunmak.
+  - **Scope:** `web-ui/app/match/[id]`, `web-ui/app/analysis/[id]`, `web-ui/components/AnalysisDashboard.tsx`
+  - **Notes:**
+    - Kategori eşleşmesi ve tolerans filtreleri eklendi.
+    - Sonuç dağılımı ve kategori istatistikleri görselleştirildi.
+**2026-01-14** — **Web UI: Sürpriz Beraberlik Analizi** (by Antigravity)
+  - **Why:** İlk yarıyı önde bitirip maç sonunda berabere kalan maçları analiz etmek.
+  - **Scope:** `web-ui/app/surprise-draw`, `web-ui/components/SurpriseDrawDashboard.tsx`
+  - **Notes:** 1/0 ve 2/0 sürprizleri için filtrelenmiş dashboard eklendi.
 **2026-01-12** — **Web UI: Sürpriz Maçlar ve Filtreleme** (by Antigravity)
   - **Why:** Kullanıcının potansiyel "sürpriz" (İY/MS 1/2 veya 2/1) maçları analiz edebilmesi için.
   - **Scope:** `web-ui/app/surprise`, `web-ui/components/SurpriseTable.tsx`, `web-ui/components/Header.tsx`
