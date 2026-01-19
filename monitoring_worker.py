@@ -85,24 +85,32 @@ def run_monitoring_worker() -> None:
     )
     matches_data = {m["match_code"]: m.get("match_date") for m in (matches_response.data or [])}
 
-    # ±12 saat içindeki maçları filtrele
+    # ±24 saat içindeki maçları filtrele (match_date yoksa da dene)
     queue = []
+    missing_date_count = 0
+
     for item in all_pending:
         match_code = item.get("match_code")
         match_date_raw = matches_data.get(match_code)
         match_date = _parse_match_date(match_date_raw)
-        
+
         if match_date:
             time_diff = abs(now - match_date)
             if time_diff <= time_window:
                 queue.append(item)
-        # match_date yoksa queue'ya ekleme
+        else:
+            # match_date yoksa ELEME: şimdilik queue'ya dahil et
+            missing_date_count += 1
+            queue.append(item)
 
     if not queue:
         print(f"No matches within ±24 hours window. Total pending: {len(all_pending)}")
         return
     
-    print(f"Found {len(queue)} matches within ±24 hours (out of {len(all_pending)} pending)")
+    print(
+    f"Found {len(queue)} matches to process "
+    f"(missing_date={missing_date_count}, total_pending={len(all_pending)})"
+    )
 
     processed = 0
     success_count = 0
