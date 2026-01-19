@@ -53,18 +53,56 @@ def _is_match_finished(match_row: dict) -> bool:
 def run_monitoring_worker() -> None:
     print("Monitoring worker started...")
 
+    now = datetime.now()
+    time_window = timedelta(hours=12)
+
+    # SUCCESS dışındaki tüm maçları çek
     response = (
         supabase.table("match_queue")
-        .select("match_code, match_url")
-        .eq("status", "MONITORING")
-        .order("last_try_at", desc=False)
+        .select("match_code, match_url, status")
+        .neq("status", "SUCCESS")
         .execute()
     )
-    queue = response.data or []
+    all_pending = response.data or []
+
+    if not all_pending:
+        print("No pending matches to process.")
+        return
+
+    # match_code listesi ile matches tablosundan match_date bilgisini al
+    match_codes = [item["match_code"] for item in all_pending if item.get("match_code")]
+    
+    if not match_codes:
+        print("No valid match codes found.")
+        return
+
+    # Supabase'den maç tarihlerini çek
+    matches_response = (
+        supabase.table("matches")
+        .select("match_code, match_date")
+        .in_("match_code", match_codes)
+        .execute()
+    )
+    matches_data = {m["match_code"]: m.get("match_date") for m in (matches_response.data or [])}
+
+    # ±12 saat içindeki maçları filtrele
+    queue = []
+    for item in all_pending:
+        match_code = item.get("match_code")
+        match_date_raw = matches_data.get(match_code)
+        match_date = _parse_match_date(match_date_raw)
+        
+        if match_date:
+            time_diff = abs(now - match_date)
+            if time_diff <= time_window:
+                queue.append(item)
+        # match_date yoksa queue'ya ekleme
 
     if not queue:
-        print("No MONITORING matches to process.")
+        print(f"No matches within ±12 hours window. Total pending: {len(all_pending)}")
         return
+    
+    print(f"Found {len(queue)} matches within ±12 hours (out of {len(all_pending)} pending)")
 
     processed = 0
     success_count = 0
