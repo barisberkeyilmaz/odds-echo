@@ -54,7 +54,7 @@ def run_monitoring_worker() -> None:
     print("Monitoring worker started...")
 
     now = datetime.now()
-    time_window = timedelta(hours=12)
+    time_window = timedelta(hours=24)
 
     # SUCCESS dışındaki tüm maçları çek
     response = (
@@ -99,10 +99,10 @@ def run_monitoring_worker() -> None:
         # match_date yoksa queue'ya ekleme
 
     if not queue:
-        print(f"No matches within ±12 hours window. Total pending: {len(all_pending)}")
+        print(f"No matches within ±24 hours window. Total pending: {len(all_pending)}")
         return
     
-    print(f"Found {len(queue)} matches within ±12 hours (out of {len(all_pending)} pending)")
+    print(f"Found {len(queue)} matches within ±24 hours (out of {len(all_pending)} pending)")
 
     processed = 0
     success_count = 0
