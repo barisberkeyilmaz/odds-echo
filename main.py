@@ -5,7 +5,9 @@ Lokal Python üzerinden tüm scraping işlemlerini yönetir.
 
 Kullanım:
     python main.py fill-queue    # Sezonlardan maç linklerini kuyruğa ekle
+    python main.py update-fixtures [--days-ahead N]  # Livedata ile fikstur guncele
     python main.py run-worker    # Scraper'ı başlat
+    python main.py run-monitoring-worker  # MONITORING maçları takip et
     python main.py status        # Kuyruk durumunu göster
     python main.py reset-errors  # Hatalı kayıtları sıfırla
     python main.py create-tables # Tabloları oluştur (weekly_fixtures vb.)
@@ -48,9 +50,8 @@ def fill_queue():
     fill_queue_from_db(mode='history')
 
 def update_fixtures():
-    """Gelecek maçları kuyruğa ekler (Fikstür)."""
-    from queue_manager import fill_queue_from_db
-    fill_queue_from_db(mode='fixtures')
+    from livedata_update_fixtures import run_from_main
+    run_from_main(sys.argv[2:])
 
 def repair_queue():
     """Kuyruktaki bozulmuş statüleri onarır."""
@@ -61,6 +62,11 @@ def run_worker():
     """Scraper worker'ı başlatır."""
     from batch_processor import run_worker as start_worker
     from batch_processor import run_worker as start_worker
+    start_worker()
+
+def run_monitoring_worker():
+    """MONITORING durumundaki maçları takip eder."""
+    from monitoring_worker import run_monitoring_worker as start_worker
     start_worker()
 
 def create_tables_cmd():
@@ -76,15 +82,21 @@ def main():
     
     command = sys.argv[1].lower()
     
+    if command == "update-fixtures":
+        from livedata_update_fixtures import run_from_main
+        run_from_main(sys.argv[2:])  # --date / --days-ahead / --write-db hepsini destekler
+        return
+
     commands = {
         "fill-queue": fill_queue,
-        "update-fixtures": update_fixtures,
         "run-worker": run_worker,
+        "run-monitoring-worker": run_monitoring_worker,
         "status": show_status,
         "reset-errors": reset_errors,
         "reset-errors": reset_errors,
         "repair-queue": repair_queue,
         "create-tables": create_tables_cmd,
+        "update-fixtures": update_fixtures,
     }
     
     if command in commands:

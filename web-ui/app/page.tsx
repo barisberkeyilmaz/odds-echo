@@ -5,6 +5,7 @@ import FixtureTable from '@/components/FixtureTable'
 import {
   buildMatchSelect,
   groupMatchesByLocalDate,
+  isValidOdd,
   isValidFixture,
   SCORE_FIELDS,
   type MatchWithScores,
@@ -31,6 +32,14 @@ const formatDateKeyLabel = (dateKey: string) =>
     month: 'long',
     year: 'numeric',
   })
+
+const hasAtLeastTwoPrimaryOdds = (record: MatchWithScores) => {
+  let count = 0
+  if (isValidOdd(record.ms_1)) count += 1
+  if (isValidOdd(record.ms_x)) count += 1
+  if (isValidOdd(record.ms_2)) count += 1
+  return count >= 2
+}
 
 type FixtureQueryResult = {
   fixtures: MatchWithScores[]
@@ -74,7 +83,7 @@ async function getFixtures(): Promise<FixtureQueryResult> {
   }
 
   return {
-    fixtures: allMatches.filter(isValidFixture),
+    fixtures: allMatches.filter((record) => isValidFixture(record) && hasAtLeastTwoPrimaryOdds(record)),
     errorMessage: null,
   }
 }

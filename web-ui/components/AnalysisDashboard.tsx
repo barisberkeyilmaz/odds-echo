@@ -95,6 +95,7 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [selectedLeague, setSelectedLeague] = useState(ALL_OPTION)
   const [selectedSeason, setSelectedSeason] = useState(ALL_OPTION)
+  const [selectedMinMatchCount, setSelectedMinMatchCount] = useState<number | null>(null)
 
   const availableCategories = useMemo(
     () =>
@@ -121,6 +122,16 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
     })
     return [ALL_OPTION, ...Array.from(unique).sort()]
   }, [candidates, match.league])
+
+  const minMatchCountOptions = useMemo(() => {
+    const maxCount = availableCategories.length
+    if (maxCount === 0) return []
+    const options: number[] = []
+    for (let count = maxCount; count >= 1; count -= 1) {
+      options.push(count)
+    }
+    return options
+  }, [availableCategories.length])
 
   const seasonOptions = useMemo(() => {
     const unique = new Set<string>()
@@ -170,11 +181,16 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
   }, [availableCategories, filteredCandidates, match, tolerancePercent])
 
   const filteredMatches = useMemo(() => {
-    if (selectedCategoryIds.length === 0) return matchesWithSimilarity
-    return matchesWithSimilarity.filter((candidate) =>
+    const matchesByCount =
+      selectedMinMatchCount === null
+        ? matchesWithSimilarity
+        : matchesWithSimilarity.filter((candidate) => candidate.matchCount >= selectedMinMatchCount)
+
+    if (selectedCategoryIds.length === 0) return matchesByCount
+    return matchesByCount.filter((candidate) =>
       selectedCategoryIds.every((categoryId) => candidate.matchedCategoryIds.includes(categoryId))
     )
-  }, [matchesWithSimilarity, selectedCategoryIds])
+  }, [matchesWithSimilarity, selectedCategoryIds, selectedMinMatchCount])
 
   const categoryStats = useMemo(() => {
     const counts = new Map<string, number>()
@@ -254,6 +270,7 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
     setSelectedCategoryIds([])
     setSelectedLeague(ALL_OPTION)
     setSelectedSeason(ALL_OPTION)
+    setSelectedMinMatchCount(null)
     setTolerancePercent(DEFAULT_TOLERANCE)
   }
 
@@ -356,6 +373,46 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
                         }`}
                       >
                         {CATEGORY_LABELS[category.id] ?? category.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="text-xs text-gray-500 mb-2">Minimum eşleşme</div>
+              {availableCategories.length === 0 ? (
+                <div className="text-xs text-gray-400">
+                  Oranlar eksik olduğu için eşleşme filtresi kapalı.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMinMatchCount(null)}
+                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                      selectedMinMatchCount === null
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-gray-200 bg-gray-50 text-gray-500 hover:border-gray-300'
+                    }`}
+                  >
+                    Tümü
+                  </button>
+                  {minMatchCountOptions.map((count) => {
+                    const isSelected = selectedMinMatchCount === count
+                    return (
+                      <button
+                        key={count}
+                        type="button"
+                        onClick={() => setSelectedMinMatchCount(count)}
+                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                            : 'border-gray-200 bg-gray-50 text-gray-500 hover:border-gray-300'
+                        }`}
+                      >
+                        {`${count}/${availableCategories.length}+`}
                       </button>
                     )
                   })}
