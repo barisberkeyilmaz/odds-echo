@@ -59,6 +59,30 @@ Hata almış veya `BAD_DATA` olarak işaretlenmiş kayıtları tekrar `PENDING` 
 python3 main.py reset-errors
 ```
 
+### 5. Telegram Mükemmel Eşleşme Bildirimi
+Günün maçları için **MS 1/X/2 + İY/MS + Toplam Gol** kategorilerinde tam eşleşme yakalanan maçları Telegram'a görsel olarak gönderir.
+
+Önce `.env` içine Telegram bilgilerini ekleyin:
+```env
+TELEGRAM_BOT_TOKEN="123456:ABCDEF..."
+TELEGRAM_CHAT_ID="-1001234567890"
+```
+
+Manuel çalıştırmak için:
+```bash
+python3 main.py notify-perfect-matches
+```
+
+Tarih seçmek için:
+```bash
+python3 main.py notify-perfect-matches --date 2025-01-20
+```
+
+Cron örneği (her gün 17:00):
+```bash
+0 17 * * * cd /Users/barisberkeyilmaz/Projects/odds-scrape/odds-scrape-mackolik && /usr/bin/python3 main.py notify-perfect-matches
+```
+
 ## 📊 Veri Kalitesi ve Hata Yönetimi
 
 *   **BAD_DATA**: Eğer bir maçın ev sahibi, deplasman, lig, sezon, maç sonu skoru veya ilk yarı skoru eksikse, o kayıt `BAD_DATA` olarak işaretlenir.

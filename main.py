@@ -8,6 +8,7 @@ Kullanım:
     python main.py update-fixtures [--days-ahead N]  # Livedata ile fikstur guncele
     python main.py run-worker    # Scraper'ı başlat
     python main.py run-monitoring-worker  # MONITORING maçları takip et
+    python main.py notify-perfect-matches  # Mükemmel eşleşme bildirimleri (Telegram)
     python main.py status        # Kuyruk durumunu göster
     python main.py reset-errors  # Hatalı kayıtları sıfırla
     python main.py create-tables # Tabloları oluştur (weekly_fixtures vb.)
@@ -69,6 +70,11 @@ def run_monitoring_worker():
     from monitoring_worker import run_monitoring_worker as start_worker
     start_worker()
 
+def notify_perfect_matches():
+    """Mükemmel eşleşme bildirimlerini gönderir."""
+    from notify_perfect_matches import run_from_main
+    run_from_main(sys.argv[2:])
+
 def create_tables_cmd():
     """Veritabanı tablolarını oluşturur."""
     from create_tables import create_tables
@@ -91,6 +97,7 @@ def main():
         "fill-queue": fill_queue,
         "run-worker": run_worker,
         "run-monitoring-worker": run_monitoring_worker,
+        "notify-perfect-matches": notify_perfect_matches,
         "status": show_status,
         "reset-errors": reset_errors,
         "reset-errors": reset_errors,
