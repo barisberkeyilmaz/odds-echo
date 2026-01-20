@@ -1,178 +1,193 @@
+# MASTERPLAN
+
 ## 1. Proje Vizyonu ve Amacı
-Bu projenin amacı, dünya genelindeki majör futbol liglerinin geçmiş maç verilerini ve bahis oranlarını toplayarak; kullanıcıya **"Benzer oranlı maçların geçmişte nasıl sonuçlandığını"** istatistiksel verilerle sunan bir analiz platformu oluşturmaktır.
+Bu projenin amacı, Mackolik üzerinden geçmiş maç verilerini ve bahis oranlarını toplayarak **"Benzer oranlı maçların geçmişte nasıl sonuçlandığını"** anlaşılır şekilde sunan bir analiz platformu oluşturmaktır.
 
-*   **Temel Metot:** İstatistiksel Desen Eşleştirme (Statistical Pattern Matching).
-*   **Hedef:** Bahis şirketlerinin belirlediği oranlardaki "Value" (Değerli) fırsatları yakalamak.
-*   **Kapsam:** Avrupa'nın en büyük 10 ligi + Uluslararası Kupalar (ŞL, AL, KL) + Türkiye Süper Ligi. Son 5-10 yıllık veri.
-
----
-
-## 2. Teknik Mimari (Architecture)
-
-Sistem **"Dağıtıcı - İşçi" (Dispatcher - Worker)** mimarisi üzerine kuruludur. Bu yapı, veri toplama sürecinin kesintisiz ve hatasız olmasını sağlar.
-
-*   **Veritabanı:** Supabase (PostgreSQL).
-*   **Programlama (Scraper):** Python (Selenium & Requests).
-*   **Web UI:** Next.js (React) + Supabase istemcisi.
-*   **Çalışma Ortamı:** Local Python Environment (Terminal / VSCode) + `web-ui`.
-*   **Veri Kaynağı:** Mackolik Arşiv Sistemi.
-*   **İş Akışı:** `queue_manager.py` fikstürleri kuyruğa yazar → `batch_processor.py` işleri paketleyerek işler → `scraper_engine.py` veri toplar.
-
-## 3. Veritabanı Şeması (Database Schema)
-Şema, tek kaynak gerçeği olarak `matches` tablosu üzerinde ilerler. `weekly_fixtures` kaldırıldı.
+- **Temel Metot:** Oran-temelli benzerlik (exact / toleranslı eşleşme).
+- **Hedef:** Oran dağılımlarını ve olası sonuç eğilimlerini göstermek.
+- **Kapsam:** Majör ligler + aktif sezonlar + LiveData fikstürleri.
 
 ---
 
-## 4. Proje Durumu (Current Status)
+## 2. Sistem Bileşenleri
+- **Veritabanı:** Supabase (PostgreSQL).
+- **Scraper CLI (Python):** `main.py` üzerinden tüm operasyonlar.
+- **Queue & Worker:** `match_queue` tablosu + `batch_processor.py`.
+- **Fikstür Takip:** `livedata_update_fixtures.py` + `monitoring_worker.py`.
+- **Bildirim:** `notify_perfect_matches.py` (Telegram görsel kart).
+- **Web UI:** Next.js (`web-ui/`) + Supabase istemcisi.
 
-### ✅ Tamamlananlar
-- [x] **Veritabanı Kurulumu:** Supabase tabloları (`leagues`, `seasons`, `matches`, `match_queue`) hazır.
-- [x] **Lokal Migrasyon:** Proje Colab'dan yerel Python yapısına (`.py` dosyaları) taşındı.
-- [x] **CLI Arayüzü:** `main.py` üzerinden tüm operasyonlar yönetilebiliyor.
-- [x] **Kuyruk Onarımı:** Hatalı durumları düzeltmek için `repair_queue.py` eklendi.
-- [x] **Fikstür Güncelleme:** `update-fixtures` komutu ile oynanmamış maçlar kuyruğa eklenebiliyor.
-- [x] **Scraper Motoru İyileştirmesi:**
-    - HTML parsing yerine Regex ve JS argümanlarından veri çekme yapısı kuruldu.
-    - Hatalı (Null) oran ve skor sorunları çözüldü.
-    - Dinamik bekleme süreleri eklendi.
-- [x] **Sonsuz Döngü Worker:** Supabase API limitine takılmadan tüm kuyruğu eriten akıllı paket sistemi (`batch_processor.py`) yazıldı.
-- [x] **Web UI: Fikstür Paneli:** Tarih bazlı fikstür listesi ve detay tablosu (`web-ui/app/page.tsx`).
-- [x] **Web UI: Oran Arama:** Çoklu oran girişli arama ve sonuç dağılımları (`web-ui/app/odds-search`).
-- [x] **Web UI: Benzerlik Analizi:** Maç detayında benzer oranlı geçmiş maçlar (`web-ui/app/match/[id]`).
-- [x] **Web UI: Analiz Dashboard:** Filtreli benzerlik, kategori istatistikleri ve sonuç dağılımları (`web-ui/app/analysis/[id]`).
+---
 
-### ⏳ Geliştirme Süreci (Next Steps)
-- [ ] Veri kalite kontrol raporu (eksik skor/oran, lig/season boşlukları).
-- [ ] Supabase sorgu maliyetini düşürmek için sayfalama ve önbellek stratejisi.
-- [ ] Web UI için basit test ve smoke-check akışı.
+## 3. Mimari Akışlar (Workflow)
 
+### 3.1 Geçmiş Veri Toplama
+1) `fill-queue` aktif sezonlardan maç linklerini kuyruğa ekler.  
+2) `run-worker` Selenium ile maçı işler ve `matches` tablosuna upsert yapar.  
+3) `match_queue.status` `SUCCESS / BAD_DATA / ERROR` olarak güncellenir.
 
-### A. Referans Tabloları (Yönetim)
+### 3.2 Fikstür Senkronizasyonu + Monitoring
+1) `update-fixtures` LiveData üzerinden gelecek maçları kuyruğa `MONITORING` olarak yazar.  
+2) `run-monitoring-worker` ±24 saat penceresinde maçları kontrol eder.  
+3) Skor geldiyse `SUCCESS`, aksi halde `MONITORING` kalır.
 
-**1. `leagues` (Ligler Tablosu)**
-Hangi ligleri takip ettiğimizi tutar.
+### 3.3 Analiz & Web UI
+- `matches` tablosu tek kaynak gerçektir (fikstür + geçmiş).  
+- Oran benzerliği (toleranslı) `/match/[id]` ve `/analysis/[id]` ile sunulur.  
+- Tam eşleşme akışı `/perfect-match` ekranında gösterilir.
+
+### 3.4 Telegram Bildirimi
+- Günlük fikstürler, geçmişte **tam eşleşen oran** bulunan maçlarla eşleştirilir.
+- HTML kart render edilir, screenshot alınır, Telegram’a gönderilir.
+
+---
+
+## 4. Veritabanı Şeması (Güncel)
+**Tek kaynak tablo:** `matches`  
+**Not:** `weekly_fixtures` deprecated (legacy).
+
+### A. Referans Tabloları
+**1) `leagues`**
 ```sql
 CREATE TABLE leagues (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL, -- Örn: Premier League
-    country VARCHAR(50),        -- Örn: İngiltere
-    created_at TIMESTAMP DEFAULT NOW()
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  country VARCHAR(50),
+  created_at TIMESTAMP DEFAULT NOW()
 );
 ```
 
-**2. `seasons` (Sezonlar Tablosu - Scraping Ayarları)**
-Hangi ligin hangi yılını tarayacağımızı ve Mackolik ID'sini tutar.
+**2) `seasons`**
 ```sql
 CREATE TABLE seasons (
-    id SERIAL PRIMARY KEY,
-    league_id INT REFERENCES leagues(id),
-    season_year VARCHAR(20) NOT NULL, -- Örn: 2024/2025
-    mackolik_id INT NOT NULL UNIQUE,  -- URL'deki 's=70381' ID'si
-    total_weeks INT DEFAULT 38,       -- Ligin hafta sayısı
-    is_active BOOLEAN DEFAULT TRUE    -- Taransın mı?
+  id SERIAL PRIMARY KEY,
+  league_id INT REFERENCES leagues(id),
+  season_year VARCHAR(20) NOT NULL,
+  mackolik_id INT NOT NULL UNIQUE,
+  total_weeks INT DEFAULT 38,
+  is_active BOOLEAN DEFAULT TRUE
 );
 ```
 
-### B. Operasyon Tabloları (İşlem)
-
-**3. `match_queue` (İş Kuyruğu)**
-Scraper'ın hangi maçlara gideceğini belirlediği geçici/takip tablosu.
+### B. Operasyon Tabloları
+**3) `match_queue`**
 ```sql
 CREATE TABLE match_queue (
-    match_code VARCHAR(50) PRIMARY KEY, -- Benzersiz Maç ID
-    match_url TEXT,
-    season_id INT,
-    season_name VARCHAR(100),
-    week INT,
-    status VARCHAR(20) DEFAULT 'PENDING', -- PENDING, SUCCESS, ERROR, BAD_DATA
-    last_try_at TIMESTAMP
+  match_code VARCHAR(50) PRIMARY KEY,
+  match_url TEXT,
+  season_id INT,
+  season_name VARCHAR(100),
+  week INT,
+  status VARCHAR(20) DEFAULT 'PENDING', -- PENDING, MONITORING, SUCCESS, ERROR, BAD_DATA
+  error_log TEXT,
+  last_try_at TIMESTAMP
 );
 ```
 
-**4. `matches` (Ana Veri Deposu)**
-Hem bitmiş maçlar hem de fikstür (oynanmamış) maçlar burada tutulur.
+**4) `matches`**
 ```sql
 CREATE TABLE matches (
-    id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    match_code VARCHAR(50) UNIQUE,
-    home_team VARCHAR(100),
-    away_team VARCHAR(100),
-    league VARCHAR(100),
-    season VARCHAR(50),
-    match_date TIMESTAMP,
-    
-    -- SKOR VE DURUM
-    score_ft VARCHAR(20), -- Maç Sonu (Örn: 2 - 1)
-    score_ht VARCHAR(20), -- İlk Yarı (Örn: 1 - 0)
-    status VARCHAR(20),   -- MS (Bitmiş) veya FIXTURE (Oynanmamış)
-    
-    -- ORANLAR (Kapanış Oranları)
-    ms_1 FLOAT, ms_x FLOAT, ms_2 FLOAT,
-    
-    -- İY/MS ORANLARI
-    iyms_11 FLOAT, iyms_1x FLOAT, iyms_12 FLOAT,
-    iyms_x1 FLOAT, iyms_xx FLOAT, iyms_x2 FLOAT,
-    iyms_21 FLOAT, iyms_2x FLOAT, iyms_22 FLOAT,
-    
-    -- ALT/ÜST & KG
-    au_15_alt FLOAT, au_15_ust FLOAT,
-    au_25_alt FLOAT, au_25_ust FLOAT,
-    kg_var FLOAT, kg_yok FLOAT,
-    
-    -- GOL ARALIĞI
-    tg_0_1 FLOAT, tg_2_3 FLOAT, tg_4_5 FLOAT, tg_6_plus FLOAT
+  id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+  match_code VARCHAR(50) UNIQUE,
+  home_team VARCHAR(100),
+  away_team VARCHAR(100),
+  league VARCHAR(100),
+  season VARCHAR(50),
+  match_date TIMESTAMP,
+
+  -- SKOR / DURUM
+  score_ft VARCHAR(20),
+  score_ht VARCHAR(20),
+  status VARCHAR(20), -- MS / FIXTURE / Ert vb.
+
+  -- MS 1/X/2
+  ms_1 FLOAT, ms_x FLOAT, ms_2 FLOAT,
+
+  -- Çifte Şans
+  cs_1x FLOAT, cs_12 FLOAT, cs_x2 FLOAT,
+
+  -- İY/MS
+  iyms_11 FLOAT, iyms_1x FLOAT, iyms_12 FLOAT,
+  iyms_x1 FLOAT, iyms_xx FLOAT, iyms_x2 FLOAT,
+  iyms_21 FLOAT, iyms_2x FLOAT, iyms_22 FLOAT,
+
+  -- ALT/ÜST & KG
+  au_15_alt FLOAT, au_15_ust FLOAT,
+  au_25_alt FLOAT, au_25_ust FLOAT,
+  kg_var FLOAT, kg_yok FLOAT,
+
+  -- GOL ARALIĞI
+  tg_0_1 FLOAT, tg_2_3 FLOAT, tg_4_5 FLOAT, tg_6_plus FLOAT
 );
 ```
 
 ---
 
-## 5. Roadmap
-
-### 5.1 Now (This Sprint)
-- [x] **Web UI: Fikstür + Analiz Sayfaları**
-    - [x] `web-ui` altında `odds-search`, `match/[id]`, `analysis/[id]`.
-    - [x] Lig/Sezon filtreleri ve sonuç dağılımları.
-    - [x] Oran benzerliği eşleştirme ve kategori istatistikleri.
+## 5. Statüler ve İş Kuralları
+- `match_queue.status`: `PENDING`, `MONITORING`, `SUCCESS`, `ERROR`, `BAD_DATA`.
+- `matches.status`: Mackolik kaynaklı durum (`MS`, `Ert`, vb.).
+- `BAD_DATA`: ev/deplasman/lig/sezon eksikse veya geçmiş maçta skor yoksa.
+- `MONITORING`: fikstürler ve skoru gelmemiş maçlar.
+- `SUCCESS`: skorlar mevcut ve maç tarihi geçmiş.
 
 ---
 
-## 11) Changelog
+## 6. Proje Durumu (Current Status)
+- [x] Supabase şeması ve `matches` tek kaynak kurgusu.
+- [x] CLI komutları (`fill-queue`, `update-fixtures`, `run-worker`, `run-monitoring-worker`).
+- [x] Selenium tabanlı scraper + chunk worker yapısı.
+- [x] LiveData fikstür senkronu ve monitoring akışı.
+- [x] Queue onarım ve durum senkronu (`repair_queue.py`).
+- [x] Telegram perfect-match görsel bildirimi.
+- [x] Web UI: Fikstür, oran arama, benzerlik, analiz ve perfect-match sayfaları.
+
+---
+
+## 7. Next Steps
+- [ ] Veri kalite raporu (eksik skor/oran, eksik match_date).
+- [ ] Supabase sorgularında sayfalama/caching stratejileri.
+- [ ] Web UI için temel smoke-test akışı.
+- [ ] Monitoring window ve status heuristiklerinin ince ayarı.
+
+---
+
+## 8. Changelog
+**2026-01-20** — **LiveData Fikstür Senkronu & Monitoring Worker**
+  - **Why:** Günlük fikstürleri kuyruğa almak ve skorları otomatik takip etmek.
+  - **Scope:** `livedata_update_fixtures.py`, `monitoring_worker.py`, `queue_manager.py`
+  - **Notes:** MONITORING statüsü ve ±24 saat takip penceresi.
+
+**2026-01-20** — **Telegram Perfect Match Bildirimi**
+  - **Why:** Günün maçlarında tam oran eşleşmelerini otomatik bildirmek.
+  - **Scope:** `notify_perfect_matches.py`
+  - **Notes:** HTML kart + screenshot ile Telegram gönderimi.
+
+**2026-01-20** — **Queue Onarım Senkronu**
+  - **Why:** `matches` ile `match_queue` statülerini eşitlemek.
+  - **Scope:** `repair_queue.py`
+  - **Notes:** Tarih/score bazlı status normalizasyonu.
 
 **2026-01-20** — **Web UI: Mükemmel Eşleşme Sayfası** (by Antigravity)
   - **Why:** Bugünkü maçları geçmiş maçlarla karşılaştırarak tam oran eşleşmesi bulan sayfa.
   - **Scope:** `web-ui/app/perfect-match`, `web-ui/components/PerfectMatchDashboard.tsx`, `web-ui/components/Header.tsx`
-  - **Notes:**
-    - 5 kategori için tolerans 0 ile tam eşleşme arama.
-    - Kategori bazlı filtreleme ve eşleşme sayısına göre sıralama.
-    - Genişletilebilir kartlarda sonuç dağılımı ve eşleşen maç listesi.
+  - **Notes:** Kategori bazlı filtreleme ve eşleşme listesi.
+
 **2026-01-14** — **Web UI: Sürpriz Ekranları Kaldırıldı** (by Antigravity)
   - **Why:** Ürün odağını temel analiz akışlarına çekmek.
   - **Scope:** `web-ui/app/surprise`, `web-ui/app/surprise-draw`, `web-ui/components/SurpriseDashboard.tsx`, `web-ui/components/SurpriseTable.tsx`, `web-ui/components/SurpriseDrawDashboard.tsx`, `web-ui/components/SurpriseDrawTable.tsx`, `web-ui/components/Header.tsx`
-  - **Notes:** Sürpriz sayfaları ve ilgili dashboard bileşenleri kaldırıldı, header navigasyonundan çıkarıldı.
+  - **Notes:** Sürpriz sayfaları kaldırıldı ve header navigasyonundan çıkarıldı.
+
 **2026-01-14** — **Web UI: Oran Arama ve Analiz Genişletmeleri** (by Antigravity)
-  - **Why:** Çoklu oran araması ve sonuç dağılımlarını tek panelde görmek.
+  - **Why:** Çoklu oran araması ve sonuç dağılımları.
   - **Scope:** `web-ui/app/odds-search`, `web-ui/components/OddsSearchDashboard.tsx`
-  - **Notes:**
-    - Filtreli oran arama ve sonuç dağılımları eklendi.
-    - Kategori bazında sonuç dağılımı görünümü genişletildi.
+  - **Notes:** Filtreli oran arama ve sonuç dağılımı panelleri eklendi.
+
 **2026-01-14** — **Web UI: Benzerlik Analizi Sayfaları** (by Antigravity)
   - **Why:** Tek maç üzerinden benzer oranlı geçmiş maçları ve analiz istatistiklerini sunmak.
   - **Scope:** `web-ui/app/match/[id]`, `web-ui/app/analysis/[id]`, `web-ui/components/AnalysisDashboard.tsx`
-  - **Notes:**
-    - Kategori eşleşmesi ve tolerans filtreleri eklendi.
-    - Sonuç dağılımı ve kategori istatistikleri görselleştirildi.
-**2026-01-14** — **Web UI: Sürpriz Beraberlik Analizi** (by Antigravity)
-  - **Why:** İlk yarıyı önde bitirip maç sonunda berabere kalan maçları analiz etmek.
-  - **Scope:** `web-ui/app/surprise-draw`, `web-ui/components/SurpriseDrawDashboard.tsx`
-  - **Notes:** 1/0 ve 2/0 sürprizleri için filtrelenmiş dashboard eklendi.
-**2026-01-12** — **Web UI: Sürpriz Maçlar ve Filtreleme** (by Antigravity)
-  - **Why:** Kullanıcının potansiyel "sürpriz" (İY/MS 1/2 veya 2/1) maçları analiz edebilmesi için.
-  - **Scope:** `web-ui/app/surprise`, `web-ui/components/SurpriseTable.tsx`, `web-ui/components/Header.tsx`
-  - **Notes:**
-    - `SurpriseTable` componenti ile client-side filtreleme (Sezon/Lig) eklendi.
-    - Hydration hatası CSS Grid yapısı ile çözüldü.
-    - Mobil uyumlu tablo tasarımı uygulandı.
+  - **Notes:** Kategori eşleşmesi ve tolerans filtreleri eklendi.
+
 **2026-01-12** — **Veri Yapısı Birleştirme** (by Antigravity)
-  - **Why:** Kullanıcının isteği üzerine Fikstür ve Arşiv verileri tek tabloda (`matches`) birleştirildi.
+  - **Why:** Fikstür ve arşiv verilerini tek tabloda tutmak.
   - **Scope:** `scraper_engine.py`, `migrate_fixtures.py`
-  - **Notes:** `weekly_fixtures` tablosu iptal edildi. Tek kaynak gerçeği (`matches`) benimsendi.
+  - **Notes:** `weekly_fixtures` tablosu devre dışı bırakıldı.
