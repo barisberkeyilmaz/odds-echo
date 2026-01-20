@@ -310,8 +310,11 @@ def _render_html_card(fixture, matches, total_matches, matched_category_ids):
         if category["id"] in matched_category_ids:
             category_chips += f"<span class='chip'>{category['label']}</span>"
 
+    display_categories = [
+        category for category in CATEGORIES if category["id"] in matched_category_ids
+    ]
     odds_sections = ""
-    for category in CATEGORIES:
+    for category in display_categories:
         fields = category["fields"]
         if not any(_is_valid_odd(fixture.get(field)) for field in fields):
             continue
@@ -334,7 +337,7 @@ def _render_html_card(fixture, matches, total_matches, matched_category_ids):
         )
 
     if not odds_sections:
-        odds_sections = "<div class='odds-empty'>Oran bulunamadi.</div>"
+        odds_sections = "<div class='odds-empty'>Eslesen kategori bulunamadi.</div>"
 
     history_rows = ""
     display_matches = matches[:6]
