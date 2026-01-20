@@ -291,139 +291,234 @@ def _pick_top_outcome(counts):
     return top_key, counts[top_key]
 
 
-def _render_html_card(fixture, matches, outcome_summary, category_labels):
-    match_title = f"{fixture.get('home_team')} - {fixture.get('away_team')}"
-    match_time = _format_match_datetime(fixture.get("match_date"))
-    league = fixture.get("league") or "-"
-    total_matches = len(matches)
-    category_text = " + ".join(category_labels) if category_labels else "N/A"
+def _render_html_card(fixture, matches, total_matches):
+    """Render Light Mode HTML card for Perfect Match visualization."""
+    
+    home_team = fixture.get('home_team')
+    away_team = fixture.get('away_team')
+    
+    # Tarih formatı
+    raw_date = fixture.get("match_date")
+    try:
+        dt = datetime.fromisoformat(str(raw_date).replace("Z", "+00:00"))
+        match_date_str = dt.strftime("%d.%m.%Y • %H:%M")
+    except:
+        match_date_str = str(raw_date)
 
-    outcome_rows = ""
-    for summary in outcome_summary:
-        label = summary["label"]
-        if summary["total"] == 0:
-            outcome_rows += (
-                f"<div class='row'><div class='name'>{label}</div>"
-                "<div class='value muted'>No result data</div></div>"
-            )
-            continue
+    league = fixture.get("league") or "Lig"
+    
+    # --- Geçmiş Maçlar Tablosu ---
+    history_rows = ""
+    display_matches = matches[:6]
+    
+    for m in display_matches:
+        try:
+            m_dt = datetime.fromisoformat(str(m.get("match_date")).replace("Z", "+00:00"))
+            m_date = m_dt.strftime("%d.%m.%y")
+        except:
+            m_date = str(m.get("match_date")).split(" ")[0]
 
-        top_label = ODDS_LABELS.get(summary["top_key"], summary["top_key"])
-        percent = round((summary["top_count"] / summary["total"]) * 100)
-        outcome_rows += (
-            f"<div class='row'><div class='name'>{label}</div>"
-            f"<div class='value'>{top_label} (%{percent})</div></div>"
-        )
+        history_rows += f"""
+        <tr>
+            <td class="col-date">{m_date}</td>
+            <td class="col-match">
+                <span class="t-home">{m.get('home_team')}</span>
+                <span class="vs">vs</span>
+                <span class="t-away">{m.get('away_team')}</span>
+            </td>
+            <td class="col-ht">{m.get('score_ht') or '-'}</td>
+            <td class="col-ft">{m.get('score_ft') or '-'}</td>
+        </tr>
+        """
 
-    return f"""<!doctype html>
-<html lang="en">
+    html_content = f"""<!doctype html>
+<html lang="tr">
 <head>
   <meta charset="utf-8" />
-  <title>Perfect Match</title>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Perfect Match Analysis</title>
   <style>
-    * {{ box-sizing: border-box; }}
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    
     body {{
-      margin: 0;
-      padding: 32px;
-      font-family: "Helvetica Neue", Arial, sans-serif;
-      background: linear-gradient(135deg, #0b111a 0%, #111827 50%, #0b111a 100%);
-      color: #e5e7eb;
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #FAFAF9;
+      color: #171717;
+      display: flex; justify-content: center; align-items: center;
+      min-height: 100vh;
+      padding: 20px;
     }}
-    .card {{
-      max-width: 980px;
-      margin: 0 auto;
-      background: #0f172a;
-      border: 1px solid rgba(148, 163, 184, 0.2);
-      border-radius: 24px;
-      padding: 28px 32px 30px;
-      box-shadow: 0 30px 60px rgba(0,0,0,0.35);
-    }}
-    .title {{
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: 0.4px;
-      margin-bottom: 6px;
-    }}
-    .subtitle {{
-      color: #94a3b8;
-      font-size: 13px;
-      margin-bottom: 20px;
-    }}
-    .match {{
-      font-size: 28px;
-      font-weight: 700;
-      margin-bottom: 10px;
-    }}
-    .meta {{
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      font-size: 13px;
-      color: #cbd5f5;
-      margin-bottom: 18px;
-    }}
-    .badge {{
-      background: rgba(56, 189, 248, 0.16);
-      color: #38bdf8;
-      padding: 6px 12px;
-      border-radius: 999px;
-      font-weight: 600;
-    }}
-    .panel {{
-      background: #111827;
+
+    .container {{
+      width: 1000px;
+      background: #FFFFFF;
+      border: 1px solid #E5E5E5;
       border-radius: 16px;
-      padding: 16px 18px;
-      border: 1px solid rgba(148, 163, 184, 0.16);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+      overflow: hidden;
     }}
-    .row {{
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 0;
-      border-bottom: 1px dashed rgba(148, 163, 184, 0.2);
-      font-size: 15px;
+
+    .content {{ padding: 48px 56px; }}
+
+    /* Header */
+    .header {{
+        display: flex; justify-content: space-between; align-items: flex-start;
+        margin-bottom: 36px; padding-bottom: 24px;
+        border-bottom: 1px solid #E5E5E5;
     }}
-    .row:last-child {{
-      border-bottom: none;
+    .brand {{ display: flex; align-items: center; gap: 14px; }}
+    .brand-logo {{ 
+        width: 5px; height: 32px; 
+        background: linear-gradient(180deg, #D97706 0%, #B45309 100%); 
+        border-radius: 2px; 
     }}
-    .name {{
-      font-weight: 600;
-      color: #f8fafc;
+    .brand-text {{ 
+        font-family: 'Oswald', sans-serif; 
+        font-size: 24px; font-weight: 700; 
+        text-transform: uppercase; letter-spacing: 1.5px; 
+        color: #171717; 
     }}
-    .value {{
-      font-weight: 700;
-      color: #fbbf24;
+    .match-meta {{ text-align: right; }}
+    .date-badge {{ color: #171717; font-weight: 600; font-size: 16px; margin-bottom: 4px; }}
+    .league-badge {{ 
+        font-size: 13px; color: #D97706; font-weight: 600; 
+        text-transform: uppercase; letter-spacing: 0.5px;
     }}
-    .muted {{
-      color: #94a3b8;
-      font-weight: 500;
+
+    /* Matchup (Hero) */
+    .matchup {{ 
+        display: flex; justify-content: space-between; align-items: center; 
+        margin-bottom: 36px; padding: 32px 0;
     }}
-    .footer {{
-      margin-top: 18px;
-      font-size: 12px;
-      color: #94a3b8;
+    .team {{
+        width: 40%; font-family: 'Oswald', sans-serif; 
+        font-size: 48px; font-weight: 700;
+        line-height: 1.05; text-transform: uppercase; letter-spacing: -0.5px;
+        color: #171717;
     }}
+    .team.home {{ text-align: right; }}
+    .team.away {{ text-align: left; }}
+    
+    .vs-divider {{
+        display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }}
+    .vs-line {{ width: 1px; height: 24px; background: #E5E5E5; }}
+    .vs-text {{
+        font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600;
+        color: #9CA3AF; letter-spacing: 1px;
+    }}
+
+    /* History Table */
+    .history-container {{
+        background: #FAFAF9; 
+        border-radius: 12px; 
+        border: 1px solid #E5E5E5; 
+        padding: 24px 28px;
+    }}
+    .hist-title {{
+        font-size: 12px; text-transform: uppercase; color: #6B7280; 
+        font-weight: 600; letter-spacing: 0.8px;
+        margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;
+        padding-bottom: 14px; border-bottom: 2px solid #D97706;
+    }}
+    .hist-title span.count {{ 
+        color: #FFFFFF; background: #D97706; 
+        padding: 5px 12px; border-radius: 4px; 
+        font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+    }}
+
+    table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
+    th {{ 
+        text-align: left; color: #9CA3AF; font-weight: 600; 
+        font-size: 11px; padding-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+    }}
+    td {{ 
+        padding: 14px 0; border-bottom: 1px solid #E5E5E5; 
+        color: #4B5563; vertical-align: middle; 
+    }}
+    tr:last-child td {{ border-bottom: none; }}
+    
+    .col-date {{ width: 14%; color: #9CA3AF; font-family: 'SF Mono', monospace; font-size: 12px; }}
+    .col-match {{ width: 62%; font-weight: 500; font-size: 14px; }}
+    .t-home {{ color: #171717; font-weight: 600; }}
+    .t-away {{ color: #171717; font-weight: 600; }}
+    .vs {{ color: #9CA3AF; margin: 0 8px; font-size: 11px; font-weight: 500; }}
+    .col-ht {{ width: 12%; color: #9CA3AF; font-size: 13px; text-align: center; font-family: 'SF Mono', monospace; }}
+    .col-ft {{ width: 12%; color: #166534; font-size: 14px; font-weight: 700; text-align: center; font-family: 'SF Mono', monospace; }}
+
+    /* Footer */
+    .footer {{ 
+        margin-top: 28px; display: flex; justify-content: space-between; align-items: center;
+        color: #9CA3AF; font-size: 12px; font-weight: 500; 
+    }}
+    .footer-left {{ display: flex; align-items: center; gap: 8px; }}
+    .footer-dot {{ width: 4px; height: 4px; background: #D97706; border-radius: 50%; }}
+    .twitter-handle {{ 
+        color: #171717; font-weight: 600; 
+        background: #F5F5F4; padding: 6px 14px; border-radius: 20px;
+        border: 1px solid #E5E5E5;
+    }}
+
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="title">Perfect Match Alert</div>
-    <div class="subtitle">{match_time} • {league}</div>
-    <div class="match">{match_title}</div>
-    <div class="meta">
-      <span class="badge">{total_matches} exact matches</span>
-      <span>Eslesen kategoriler: {category_text}</span>
-    </div>
-    <div class="panel">
-      {outcome_rows}
-    </div>
-    <div class="footer">
-      Based on historical matches with identical odds in selected categories.
+  <div class="container">
+    <div class="content">
+        <div class="header">
+            <div class="brand">
+                <div class="brand-logo"></div>
+                <div class="brand-text">Perfect Match</div>
+            </div>
+            <div class="match-meta">
+                <div class="date-badge">{match_date_str}</div>
+                <div class="league-badge">{league}</div>
+            </div>
+        </div>
+
+        <div class="matchup">
+            <div class="team home">{home_team}</div>
+            <div class="vs-divider">
+                <div class="vs-line"></div>
+                <div class="vs-text">VS</div>
+                <div class="vs-line"></div>
+            </div>
+            <div class="team away">{away_team}</div>
+        </div>
+
+        <div class="history-container">
+            <div class="hist-title">
+                Aynı Oranlarla Açılan Geçmiş Maçlar
+                <span class="count">{total_matches} MAÇ BULUNDU</span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th class="col-date">TARİH</th>
+                        <th class="col-match">MAÇ</th>
+                        <th class="col-ht">İY</th>
+                        <th class="col-ft">MS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {history_rows}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer">
+            <div class="footer-left">
+                <span>Tarihi Oran Analizi</span>
+                <div class="footer-dot"></div>
+                <span>AI Tahmin Modeli</span>
+            </div>
+            <div class="twitter-handle">@BahisAnalizAI</div>
+        </div>
     </div>
   </div>
 </body>
 </html>
 """
+    return html_content
 
 
 def _create_screenshot(html_content, output_path):
@@ -517,6 +612,36 @@ def _build_outcome_summary(matches, category_ids=None):
     return summary
 
 
+def _generate_tweet_text(fixture, matches, outcome_summary):
+    """Generate ready-to-post tweet text without emojis."""
+    home = fixture.get("home_team")
+    away = fixture.get("away_team")
+    league = fixture.get("league") or "Lig"
+    count = len(matches)
+    
+    # Build outcome lines
+    outcome_lines = []
+    for item in outcome_summary:
+        if item["top_count"] > 0:
+            pct = round(item["top_count"] / count * 100)
+            label = ODDS_LABELS.get(item["top_key"], item["top_key"])
+            outcome_lines.append(f"{item['label']}: {label} (%{pct})")
+    
+    outcomes_text = "\n".join(f"- {line}" for line in outcome_lines)
+    
+    tweet = f"""{league}
+{home} vs {away}
+
+Tarihi veri tabanindaki 200.000+ mac tarandi.
+Bu macla birebir ayni oranlarda acilmis {count} mac bulundu.
+
+Sonuclar:
+{outcomes_text}
+"""
+    
+    return tweet.strip()
+
+
 def run(date_key=None, dry_run=False, max_matches=None):
     today_key = _get_date_key(datetime.now())
     target_key = date_key or today_key
@@ -549,16 +674,16 @@ def run(date_key=None, dry_run=False, max_matches=None):
             if category["id"] in matched_category_ids
         ]
         outcome_summary = _build_outcome_summary(matches, matched_category_ids)
-        html = _render_html_card(fixture, matches, outcome_summary, category_labels)
+        html = _render_html_card(fixture, matches, len(matches))
+        tweet_text = _generate_tweet_text(fixture, matches, outcome_summary)
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = os.path.join(tmpdir, "match.png")
             _create_screenshot(html, output_path)
-            caption = f"{fixture.get('home_team')} - {fixture.get('away_team')} ({len(matches)} match)"
             if dry_run:
-                print(f"DRY RUN: {caption}")
+                print(f"DRY RUN:\n{tweet_text}\n")
             else:
-                _send_telegram_photo(bot_token, chat_id, output_path, caption)
-                print(f"Sent: {caption}")
+                _send_telegram_photo(bot_token, chat_id, output_path, tweet_text)
+                print(f"Sent: {fixture.get('home_team')} vs {fixture.get('away_team')}")
 
 
 def run_from_main(argv):
