@@ -60,7 +60,7 @@ python3 main.py reset-errors
 ```
 
 ### 5. Telegram Mükemmel Eşleşme Bildirimi
-Günün maçları için **MS 1/X/2 + İY/MS + Toplam Gol** kategorilerinde tam eşleşme yakalanan maçları Telegram'a görsel olarak gönderir.
+Günün maçları için **MS 1/X/2 + İY/MS + Toplam Gol** kategorilerinden en az birinde tam eşleşme yakalanan maçları Telegram'a görsel olarak gönderir.
 
 Önce `.env` içine Telegram bilgilerini ekleyin:
 ```env

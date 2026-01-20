@@ -291,11 +291,12 @@ def _pick_top_outcome(counts):
     return top_key, counts[top_key]
 
 
-def _render_html_card(fixture, matches, outcome_summary):
+def _render_html_card(fixture, matches, outcome_summary, category_labels):
     match_title = f"{fixture.get('home_team')} - {fixture.get('away_team')}"
     match_time = _format_match_datetime(fixture.get("match_date"))
     league = fixture.get("league") or "-"
     total_matches = len(matches)
+    category_text = " + ".join(category_labels) if category_labels else "N/A"
 
     outcome_rows = ""
     for summary in outcome_summary:
@@ -411,7 +412,7 @@ def _render_html_card(fixture, matches, outcome_summary):
     <div class="match">{match_title}</div>
     <div class="meta">
       <span class="badge">{total_matches} exact matches</span>
-      <span>MS 1/X/2 + IY/MS + Total Goals</span>
+      <span>Eslesen kategoriler: {category_text}</span>
     </div>
     <div class="panel">
       {outcome_rows}
@@ -461,25 +462,44 @@ def _send_telegram_photo(bot_token, chat_id, image_path, caption):
 def _collect_perfect_matches(fixtures, historical):
     matches_to_notify = []
     for fixture in fixtures:
-        if not all(_has_full_category_odds(fixture, category["fields"]) for category in CATEGORIES):
+        available_categories = [
+            category for category in CATEGORIES if _has_full_category_odds(fixture, category["fields"])
+        ]
+        if not available_categories:
             continue
 
         perfect_matches = []
+        matched_category_ids = set()
         for candidate in historical:
             if candidate.get("id") == fixture.get("id"):
                 continue
-            if all(_is_category_match(fixture, candidate, category["fields"]) for category in CATEGORIES):
-                perfect_matches.append(candidate)
+            matched_ids = []
+            for category in available_categories:
+                if not _has_full_category_odds(candidate, category["fields"]):
+                    continue
+                if _is_category_match(fixture, candidate, category["fields"]):
+                    matched_ids.append(category["id"])
+            if matched_ids:
+                candidate_copy = dict(candidate)
+                candidate_copy["_matched_categories"] = matched_ids
+                perfect_matches.append(candidate_copy)
+                matched_category_ids.update(matched_ids)
 
         if perfect_matches:
-            matches_to_notify.append((fixture, perfect_matches))
+            ordered_ids = [category["id"] for category in CATEGORIES if category["id"] in matched_category_ids]
+            matches_to_notify.append((fixture, perfect_matches, ordered_ids))
 
     return matches_to_notify
 
 
-def _build_outcome_summary(matches):
+def _build_outcome_summary(matches, category_ids=None):
     summary = []
-    for category in CATEGORIES:
+    categories = (
+        [category for category in CATEGORIES if category["id"] in category_ids]
+        if category_ids
+        else CATEGORIES
+    )
+    for category in categories:
         counts, total = _get_outcome_stats(matches, category)
         top = _pick_top_outcome(counts)
         if top:
@@ -522,9 +542,14 @@ def run(date_key=None, dry_run=False, max_matches=None):
     if max_matches:
         matches_to_notify = matches_to_notify[:max_matches]
 
-    for fixture, matches in matches_to_notify:
-        outcome_summary = _build_outcome_summary(matches)
-        html = _render_html_card(fixture, matches, outcome_summary)
+    for fixture, matches, matched_category_ids in matches_to_notify:
+        category_labels = [
+            category["label"]
+            for category in CATEGORIES
+            if category["id"] in matched_category_ids
+        ]
+        outcome_summary = _build_outcome_summary(matches, matched_category_ids)
+        html = _render_html_card(fixture, matches, outcome_summary, category_labels)
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = os.path.join(tmpdir, "match.png")
             _create_screenshot(html, output_path)
