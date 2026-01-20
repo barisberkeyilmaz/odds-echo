@@ -37,6 +37,12 @@ export default function Header({ totalMatches }: { totalMatches?: number }) {
                 >
                     🔎 Oran Arama
                 </Link>
+                <Link
+                    href="/perfect-match"
+                    className={`px-4 py-2 rounded-t-lg font-medium transition-colors ${isActive('/perfect-match')}`}
+                >
+                    🎯 Mükemmel Eşleşme
+                </Link>
             </nav>
         </header>
     )

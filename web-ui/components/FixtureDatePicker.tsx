@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 
@@ -25,6 +25,8 @@ const formatDateLabel = (dateKey: string) =>
 
 export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }: FixtureDatePickerProps) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const availableSet = useMemo(() => new Set(availableDateKeys), [availableDateKeys])
   const selectedDate = useMemo(() => fromDateKey(selectedDateKey), [selectedDateKey])
 
@@ -36,7 +38,9 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
   )
 
   const goToDateKey = (dateKey: string) => {
-    router.push(`/?date=${dateKey}`)
+    const params = new URLSearchParams(searchParams?.toString())
+    params.set('date', dateKey)
+    router.push(`${pathname}?${params.toString()}`)
   }
 
   const handleSelect = (date: Date | null) => {

@@ -138,6 +138,13 @@ CREATE TABLE matches (
 
 ## 11) Changelog
 
+**2026-01-20** — **Web UI: Mükemmel Eşleşme Sayfası** (by Antigravity)
+  - **Why:** Bugünkü maçları geçmiş maçlarla karşılaştırarak tam oran eşleşmesi bulan sayfa.
+  - **Scope:** `web-ui/app/perfect-match`, `web-ui/components/PerfectMatchDashboard.tsx`, `web-ui/components/Header.tsx`
+  - **Notes:**
+    - 5 kategori için tolerans 0 ile tam eşleşme arama.
+    - Kategori bazlı filtreleme ve eşleşme sayısına göre sıralama.
+    - Genişletilebilir kartlarda sonuç dağılımı ve eşleşen maç listesi.
 **2026-01-14** — **Web UI: Sürpriz Ekranları Kaldırıldı** (by Antigravity)
   - **Why:** Ürün odağını temel analiz akışlarına çekmek.
   - **Scope:** `web-ui/app/surprise`, `web-ui/app/surprise-draw`, `web-ui/components/SurpriseDashboard.tsx`, `web-ui/components/SurpriseTable.tsx`, `web-ui/components/SurpriseDrawDashboard.tsx`, `web-ui/components/SurpriseDrawTable.tsx`, `web-ui/components/Header.tsx`
