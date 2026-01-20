@@ -1,0 +1,36 @@
+name: Notify Perfect Matches
+
+on:
+  schedule:
+    - cron: "0 14 * * *" # 17:00 Europe/Istanbul (UTC+3)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notify-perfect-matches
+  cancel-in-progress: true
+
+jobs:
+  notify-perfect-matches:
+    environment: env
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      PYTHONUNBUFFERED: "1"
+      TZ: "Europe/Istanbul"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Send perfect match notifications
+        run: python3 main.py notify-perfect-matches
