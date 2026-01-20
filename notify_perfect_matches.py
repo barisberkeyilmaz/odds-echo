@@ -291,31 +291,59 @@ def _pick_top_outcome(counts):
     return top_key, counts[top_key]
 
 
-def _render_html_card(fixture, matches, total_matches):
-    """Render Light Mode HTML card for Perfect Match visualization."""
-    
-    home_team = fixture.get('home_team')
-    away_team = fixture.get('away_team')
-    
-    # Tarih formatı
+def _render_html_card(fixture, matches, total_matches, matched_category_ids):
+    """Render HTML card for Perfect Match visualization with odds."""
+    home_team = fixture.get("home_team") or "-"
+    away_team = fixture.get("away_team") or "-"
+
     raw_date = fixture.get("match_date")
     try:
         dt = datetime.fromisoformat(str(raw_date).replace("Z", "+00:00"))
         match_date_str = dt.strftime("%d.%m.%Y • %H:%M")
-    except:
+    except (ValueError, TypeError):
         match_date_str = str(raw_date)
 
     league = fixture.get("league") or "Lig"
-    
-    # --- Geçmiş Maçlar Tablosu ---
+
+    category_chips = ""
+    for category in CATEGORIES:
+        if category["id"] in matched_category_ids:
+            category_chips += f"<span class='chip'>{category['label']}</span>"
+
+    odds_sections = ""
+    for category in CATEGORIES:
+        fields = category["fields"]
+        if not any(_is_valid_odd(fixture.get(field)) for field in fields):
+            continue
+        items = ""
+        for field in fields:
+            value = fixture.get(field)
+            formatted = f"{value:.2f}" if _is_valid_odd(value) else "-"
+            items += (
+                "<div class='odds-item'>"
+                f"<div class='odds-label'>{ODDS_LABELS.get(field, field)}</div>"
+                f"<div class='odds-value'>{formatted}</div>"
+                "</div>"
+            )
+        layout_class = "odds-group wide" if category["id"] == "iyms" else "odds-group"
+        odds_sections += (
+            f"<div class='{layout_class}'>"
+            f"<div class='odds-title'>{category['label']}</div>"
+            f"<div class='odds-grid'>{items}</div>"
+            "</div>"
+        )
+
+    if not odds_sections:
+        odds_sections = "<div class='odds-empty'>Oran bulunamadi.</div>"
+
     history_rows = ""
     display_matches = matches[:6]
-    
+
     for m in display_matches:
         try:
             m_dt = datetime.fromisoformat(str(m.get("match_date")).replace("Z", "+00:00"))
             m_date = m_dt.strftime("%d.%m.%y")
-        except:
+        except (ValueError, TypeError):
             m_date = str(m.get("match_date")).split(" ")[0]
 
         history_rows += f"""
@@ -339,130 +367,194 @@ def _render_html_card(fixture, matches, total_matches):
   <title>Perfect Match Analysis</title>
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    
+
     body {{
       font-family: 'Inter', -apple-system, sans-serif;
-      background: #FAFAF9;
-      color: #171717;
+      background: radial-gradient(circle at top, #f8fafc 0%, #eef2f7 60%, #e2e8f0 100%);
+      color: #0f172a;
       display: flex; justify-content: center; align-items: center;
       min-height: 100vh;
       padding: 20px;
     }}
 
     .container {{
-      width: 1000px;
-      background: #FFFFFF;
-      border: 1px solid #E5E5E5;
-      border-radius: 16px;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+      width: 1040px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      box-shadow: 0 18px 60px rgba(15, 23, 42, 0.12);
       overflow: hidden;
     }}
 
-    .content {{ padding: 48px 56px; }}
+    .top-bar {{
+      height: 6px;
+      background: linear-gradient(90deg, #0ea5e9 0%, #22c55e 60%, #f59e0b 100%);
+    }}
 
-    /* Header */
+    .content {{ padding: 36px 44px 40px; }}
+
     .header {{
         display: flex; justify-content: space-between; align-items: flex-start;
-        margin-bottom: 36px; padding-bottom: 24px;
-        border-bottom: 1px solid #E5E5E5;
+        margin-bottom: 28px; padding-bottom: 18px;
+        border-bottom: 1px solid #e2e8f0;
     }}
-    .brand {{ display: flex; align-items: center; gap: 14px; }}
-    .brand-logo {{ 
-        width: 5px; height: 32px; 
-        background: linear-gradient(180deg, #D97706 0%, #B45309 100%); 
-        border-radius: 2px; 
+    .brand {{ display: flex; align-items: center; gap: 12px; }}
+    .brand-logo {{
+        width: 10px; height: 36px;
+        background: linear-gradient(180deg, #0ea5e9 0%, #2563eb 100%);
+        border-radius: 4px;
     }}
-    .brand-text {{ 
-        font-family: 'Oswald', sans-serif; 
-        font-size: 24px; font-weight: 700; 
-        text-transform: uppercase; letter-spacing: 1.5px; 
-        color: #171717; 
+    .brand-text {{
+        font-family: 'Oswald', sans-serif;
+        font-size: 20px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 1.2px;
+        color: #0f172a;
     }}
     .match-meta {{ text-align: right; }}
-    .date-badge {{ color: #171717; font-weight: 600; font-size: 16px; margin-bottom: 4px; }}
-    .league-badge {{ 
-        font-size: 13px; color: #D97706; font-weight: 600; 
+    .date-badge {{ color: #0f172a; font-weight: 600; font-size: 14px; margin-bottom: 4px; }}
+    .league-badge {{
+        font-size: 12px; color: #0ea5e9; font-weight: 600;
         text-transform: uppercase; letter-spacing: 0.5px;
     }}
 
-    /* Matchup (Hero) */
-    .matchup {{ 
-        display: flex; justify-content: space-between; align-items: center; 
-        margin-bottom: 36px; padding: 32px 0;
+    .matchup {{
+        display: grid; grid-template-columns: 1fr auto 1fr;
+        align-items: center; gap: 18px;
+        margin-bottom: 22px; padding: 16px 0 20px;
     }}
     .team {{
-        width: 40%; font-family: 'Oswald', sans-serif; 
-        font-size: 48px; font-weight: 700;
-        line-height: 1.05; text-transform: uppercase; letter-spacing: -0.5px;
-        color: #171717;
+        font-family: 'Oswald', sans-serif;
+        font-size: 32px; font-weight: 700;
+        line-height: 1.1; text-transform: uppercase;
+        color: #0f172a;
     }}
     .team.home {{ text-align: right; }}
     .team.away {{ text-align: left; }}
-    
+
     .vs-divider {{
         display: flex; flex-direction: column; align-items: center; gap: 8px;
     }}
-    .vs-line {{ width: 1px; height: 24px; background: #E5E5E5; }}
+    .vs-line {{ width: 1px; height: 22px; background: #e2e8f0; }}
     .vs-text {{
-        font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600;
-        color: #9CA3AF; letter-spacing: 1px;
+        font-size: 12px; font-weight: 600;
+        color: #94a3b8; letter-spacing: 1px;
     }}
 
-    /* History Table */
+    .chips {{
+        display: flex; flex-wrap: wrap; gap: 8px;
+        margin-bottom: 22px;
+    }}
+    .chip {{
+        padding: 6px 10px; border-radius: 999px;
+        background: #f0f9ff; color: #0ea5e9;
+        font-size: 11px; font-weight: 600;
+        border: 1px solid #bae6fd;
+        text-transform: uppercase; letter-spacing: 0.4px;
+    }}
+
+    .odds-section {{
+        margin-bottom: 26px;
+    }}
+    .section-title {{
+        font-size: 12px; text-transform: uppercase; color: #64748b;
+        font-weight: 700; letter-spacing: 0.6px;
+        margin-bottom: 12px;
+    }}
+    .odds-sections {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+    }}
+    .odds-group {{
+        background: #f8fafc;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        padding: 14px 16px 16px;
+    }}
+    .odds-group.wide {{
+        grid-column: span 2;
+    }}
+    .odds-title {{
+        font-size: 12px; font-weight: 700; color: #0f172a;
+        margin-bottom: 10px;
+    }}
+    .odds-grid {{
+        display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }}
+    .odds-item {{
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 8px 10px;
+        text-align: center;
+    }}
+    .odds-label {{
+        font-size: 10px; color: #94a3b8; margin-bottom: 4px;
+    }}
+    .odds-value {{
+        font-size: 12px; font-weight: 700; color: #0f172a;
+    }}
+    .odds-empty {{
+        padding: 14px 16px;
+        background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px;
+        color: #c2410c; font-size: 12px; font-weight: 600;
+        grid-column: span 2;
+    }}
+
     .history-container {{
-        background: #FAFAF9; 
-        border-radius: 12px; 
-        border: 1px solid #E5E5E5; 
-        padding: 24px 28px;
+        background: #ffffff;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        padding: 20px 24px;
     }}
     .hist-title {{
-        font-size: 12px; text-transform: uppercase; color: #6B7280; 
-        font-weight: 600; letter-spacing: 0.8px;
+        font-size: 12px; text-transform: uppercase; color: #64748b;
+        font-weight: 700; letter-spacing: 0.8px;
         margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;
-        padding-bottom: 14px; border-bottom: 2px solid #D97706;
+        padding-bottom: 12px; border-bottom: 2px solid #0ea5e9;
     }}
-    .hist-title span.count {{ 
-        color: #FFFFFF; background: #D97706; 
-        padding: 5px 12px; border-radius: 4px; 
+    .hist-title span.count {{
+        color: #ffffff; background: #0ea5e9;
+        padding: 5px 12px; border-radius: 999px;
         font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
     }}
 
-    table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
-    th {{ 
-        text-align: left; color: #9CA3AF; font-weight: 600; 
+    table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
+    th {{
+        text-align: left; color: #94a3b8; font-weight: 700;
         font-size: 11px; padding-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;
     }}
-    td {{ 
-        padding: 14px 0; border-bottom: 1px solid #E5E5E5; 
-        color: #4B5563; vertical-align: middle; 
+    td {{
+        padding: 12px 0; border-bottom: 1px solid #e2e8f0;
+        color: #475569; vertical-align: middle;
     }}
     tr:last-child td {{ border-bottom: none; }}
-    
-    .col-date {{ width: 14%; color: #9CA3AF; font-family: 'SF Mono', monospace; font-size: 12px; }}
-    .col-match {{ width: 62%; font-weight: 500; font-size: 14px; }}
-    .t-home {{ color: #171717; font-weight: 600; }}
-    .t-away {{ color: #171717; font-weight: 600; }}
-    .vs {{ color: #9CA3AF; margin: 0 8px; font-size: 11px; font-weight: 500; }}
-    .col-ht {{ width: 12%; color: #9CA3AF; font-size: 13px; text-align: center; font-family: 'SF Mono', monospace; }}
-    .col-ft {{ width: 12%; color: #166534; font-size: 14px; font-weight: 700; text-align: center; font-family: 'SF Mono', monospace; }}
 
-    /* Footer */
-    .footer {{ 
-        margin-top: 28px; display: flex; justify-content: space-between; align-items: center;
-        color: #9CA3AF; font-size: 12px; font-weight: 500; 
+    .col-date {{ width: 14%; color: #94a3b8; font-family: 'SF Mono', monospace; font-size: 11px; }}
+    .col-match {{ width: 62%; font-weight: 600; font-size: 13px; }}
+    .t-home {{ color: #0f172a; font-weight: 700; }}
+    .t-away {{ color: #0f172a; font-weight: 700; }}
+    .vs {{ color: #94a3b8; margin: 0 6px; font-size: 10px; font-weight: 600; }}
+    .col-ht {{ width: 12%; color: #64748b; font-size: 12px; text-align: center; font-family: 'SF Mono', monospace; }}
+    .col-ft {{ width: 12%; color: #16a34a; font-size: 13px; font-weight: 700; text-align: center; font-family: 'SF Mono', monospace; }}
+
+    .footer {{
+        margin-top: 22px; display: flex; justify-content: space-between; align-items: center;
+        color: #94a3b8; font-size: 11px; font-weight: 600;
     }}
     .footer-left {{ display: flex; align-items: center; gap: 8px; }}
-    .footer-dot {{ width: 4px; height: 4px; background: #D97706; border-radius: 50%; }}
-    .twitter-handle {{ 
-        color: #171717; font-weight: 600; 
-        background: #F5F5F4; padding: 6px 14px; border-radius: 20px;
-        border: 1px solid #E5E5E5;
+    .footer-dot {{ width: 4px; height: 4px; background: #0ea5e9; border-radius: 50%; }}
+    .footer-tag {{
+        color: #0f172a; font-weight: 700;
+        background: #f1f5f9; padding: 6px 12px; border-radius: 999px;
+        border: 1px solid #e2e8f0;
     }}
-
   </style>
 </head>
 <body>
   <div class="container">
+    <div class="top-bar"></div>
     <div class="content">
         <div class="header">
             <div class="brand">
@@ -485,17 +577,26 @@ def _render_html_card(fixture, matches, total_matches):
             <div class="team away">{away_team}</div>
         </div>
 
+        <div class="chips">{category_chips}</div>
+
+        <div class="odds-section">
+            <div class="section-title">Mac Oranlari</div>
+            <div class="odds-sections">
+                {odds_sections}
+            </div>
+        </div>
+
         <div class="history-container">
             <div class="hist-title">
-                Aynı Oranlarla Açılan Geçmiş Maçlar
-                <span class="count">{total_matches} MAÇ BULUNDU</span>
+                Ayni Oranlarla Acilan Gecmis Maclar
+                <span class="count">{total_matches} MAC BULUNDU</span>
             </div>
             <table>
                 <thead>
                     <tr>
-                        <th class="col-date">TARİH</th>
-                        <th class="col-match">MAÇ</th>
-                        <th class="col-ht">İY</th>
+                        <th class="col-date">TARIH</th>
+                        <th class="col-match">MAC</th>
+                        <th class="col-ht">IY</th>
                         <th class="col-ft">MS</th>
                     </tr>
                 </thead>
@@ -509,9 +610,9 @@ def _render_html_card(fixture, matches, total_matches):
             <div class="footer-left">
                 <span>Tarihi Oran Analizi</span>
                 <div class="footer-dot"></div>
-                <span>AI Tahmin Modeli</span>
+                <span>Model V1</span>
             </div>
-            <div class="twitter-handle">@BahisAnalizAI</div>
+            <div class="footer-tag">odds-scrape</div>
         </div>
     </div>
   </div>
@@ -674,7 +775,7 @@ def run(date_key=None, dry_run=False, max_matches=None):
             if category["id"] in matched_category_ids
         ]
         outcome_summary = _build_outcome_summary(matches, matched_category_ids)
-        html = _render_html_card(fixture, matches, len(matches))
+        html = _render_html_card(fixture, matches, len(matches), matched_category_ids)
         tweet_text = _generate_tweet_text(fixture, matches, outcome_summary)
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = os.path.join(tmpdir, "match.png")
