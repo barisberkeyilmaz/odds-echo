@@ -2,21 +2,44 @@ name: Monitoring Worker
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    - cron: "*/15 * * * *"
+    - cron: "0 */3 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: monitoring-worker
-  cancel-in-progress: true
-
 jobs:
-  monitoring-worker:
+  fast-monitoring-worker:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *'
     environment: env
     runs-on: ubuntu-latest
     timeout-minutes: 55
+    concurrency:
+      group: fast-monitoring-worker
+      cancel-in-progress: true
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run fast monitoring worker
+        run: python3 fast_monitoring_worker.py
+  monitoring-worker:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 */3 * * *'
+    environment: env
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    concurrency:
+      group: monitoring-worker
+      cancel-in-progress: true
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
