@@ -1,20 +1,20 @@
-name: Monitoring Worker
+name: Fast Monitoring Worker
 
 on:
   schedule:
-    - cron: "0 */3 * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  monitoring-worker:
+  fast-monitoring-worker:
     environment: env
     runs-on: ubuntu-latest
     timeout-minutes: 55
     concurrency:
-      group: monitoring-worker
+      group: fast-monitoring-worker
       cancel-in-progress: true
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -28,5 +28,5 @@ jobs:
           cache: "pip"
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Run monitoring worker
-        run: python3 monitoring_worker.py
+      - name: Run fast monitoring worker
+        run: python3 fast_monitoring_worker.py
