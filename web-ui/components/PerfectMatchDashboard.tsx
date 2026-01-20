@@ -196,7 +196,7 @@ export default function PerfectMatchDashboard({
         [historicalMatches, selectedLeague, selectedSeason]
     )
 
-    // Calculate perfect matches for each fixture
+    // Calculate perfect matches for each fixture (rank by matched category count)
     const fixturesWithMatches = useMemo<FixtureWithMatches[]>(() => {
         if (selectedCategoryIds.length === 0) {
             return fixtures.map((f) => ({
@@ -241,6 +241,15 @@ export default function PerfectMatchDashboard({
                     })
                     .filter((m) => m.matchedCategoryIds.length === selectedCategories.length)
 
+                if (perfectMatches.length === 0) {
+                    return {
+                        ...fixture,
+                        perfectMatches: [],
+                        matchingCategoryCount: 0,
+                        matchedCategoryIds: [],
+                    }
+                }
+
                 // Also calculate which categories matched for the fixture
                 const fixtureMatchedCategoryIds = selectedCategories
                     .filter((category) =>
@@ -252,12 +261,16 @@ export default function PerfectMatchDashboard({
                 return {
                     ...fixture,
                     perfectMatches,
-                    matchingCategoryCount: perfectMatches.length,
+                    matchingCategoryCount: selectedCategories.length,
                     matchedCategoryIds: fixtureMatchedCategoryIds,
                 }
             })
             .filter((f) => f.matchingCategoryCount > 0)
-            .sort((a, b) => b.matchingCategoryCount - a.matchingCategoryCount)
+            .sort((a, b) => {
+                const categoryDiff = b.matchingCategoryCount - a.matchingCategoryCount
+                if (categoryDiff !== 0) return categoryDiff
+                return b.perfectMatches.length - a.perfectMatches.length
+            })
     }, [fixtures, filteredHistorical, selectedCategoryIds])
 
     // Calculate result statistics for expanded fixture
@@ -413,7 +426,7 @@ export default function PerfectMatchDashboard({
                     <p className="text-sm text-gray-500">
                         {selectedCategoryIds.length === 0
                             ? 'En az bir kategori seçin.'
-                            : 'Seçili kategorilerde tam eşleşme bulunan maç yok.'}
+                            : 'Seçili kategorilerde eşleşme bulunan maç yok.'}
                     </p>
                 </div>
             ) : (
