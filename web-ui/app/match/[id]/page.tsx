@@ -56,7 +56,7 @@ async function getFixture(id: number) {
     .single()
 
   if (error || !data) return null
-  return data as MatchWithScores
+  return data as unknown as MatchWithScores
 }
 
 async function getSimilarMatches(baseMatch: MatchWithScores) {
@@ -70,7 +70,7 @@ async function getSimilarMatches(baseMatch: MatchWithScores) {
 
   if (error || !data) return []
 
-  const candidates = data as MatchWithScores[]
+  const candidates = data as unknown as MatchWithScores[]
 
   return candidates
     .map((candidate) => {

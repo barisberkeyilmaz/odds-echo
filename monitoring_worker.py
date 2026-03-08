@@ -1,115 +1,107 @@
 import random
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from batch_processor import create_driver, force_cleanup
 from config import supabase
+from logging_config import setup_logging
 from scraper_engine import process_full_match
+from utils import is_match_finished, parse_match_date
 
-# Maçın bitmiş sayılabilmesi için maç başlangıcından geçmesi gereken minimum süre
-MIN_MATCH_DURATION = timedelta(hours=3)
-
-
-def _parse_match_date(value):
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        dt_value = value
-    elif isinstance(value, str):
-        try:
-            dt_value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            try:
-                dt_value = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                return None
-    else:
-        return None
-
-    if dt_value.tzinfo:
-        return dt_value.astimezone().replace(tzinfo=None)
-    return dt_value
+logger = setup_logging("monitoring_worker")
 
 
-def _is_match_finished(match_row: dict) -> bool:
-    now = datetime.now()
-    match_date = _parse_match_date(match_row.get("match_date"))
-    if match_date and match_date > now:
-        return False
-
-    status = str(match_row.get("status") or "").strip().upper()
-    if status == "MS":
-        return True
-
-    # FT skoru varsa VE maç başlangıcından en az 3 saat geçtiyse bitmiş say
-    # Bu sayede canlı maçlar yanlışlıkla SUCCESS olarak işaretlenmez
-    score_ft = match_row.get("score_ft")
-    if score_ft and match_date and (now - match_date) >= MIN_MATCH_DURATION:
-        return True
-
-    return False
-
-
-def run_monitoring_worker() -> None:
-    print("Monitoring worker started...")
-
-    now = datetime.now()
-    time_window = timedelta(hours=24)
-
-    # SUCCESS dışındaki tüm maçları çek
-    response = (
-        supabase.table("match_queue")
-        .select("match_code, match_url, status")
-        .neq("status", "SUCCESS")
-        .execute()
+def run_monitoring_worker(
+    window_hours_before: int = 24,
+    window_hours_after: int = 24,
+    include_missing_dates: bool = True,
+) -> None:
+    mode = "normal" if include_missing_dates else "fast"
+    logger.info(
+        "Monitoring worker started (mode=%s, window=-%dh/+%dh)",
+        mode, window_hours_before, window_hours_after,
     )
-    all_pending = response.data or []
 
-    if not all_pending:
-        print("No pending matches to process.")
-        return
+    now = datetime.now()
+    window_start = now - timedelta(hours=window_hours_before)
+    window_end = now + timedelta(hours=window_hours_after)
 
-    # match_code listesi ile matches tablosundan match_date bilgisini al
-    match_codes = [item["match_code"] for item in all_pending if item.get("match_code")]
-    
-    if not match_codes:
-        print("No valid match codes found.")
-        return
+    # DB-side filtering: get match_codes within the date window first
+    window_start_str = window_start.strftime("%Y-%m-%d %H:%M:%S")
+    window_end_str = window_end.strftime("%Y-%m-%d %H:%M:%S")
 
-    # Supabase'den maç tarihlerini çek
-    matches_response = (
+    matches_in_window = (
         supabase.table("matches")
-        .select("match_code, match_date")
-        .in_("match_code", match_codes)
+        .select("match_code")
+        .gte("match_date", window_start_str)
+        .lte("match_date", window_end_str)
         .execute()
     )
-    matches_data = {m["match_code"]: m.get("match_date") for m in (matches_response.data or [])}
+    window_match_codes = {
+        m["match_code"] for m in (matches_in_window.data or []) if m.get("match_code")
+    }
 
-    # ±24 saat içindeki maçları filtrele (match_date yoksa da dene)
+    if not window_match_codes and not include_missing_dates:
+        logger.info("No matches within date window. Nothing to process.")
+        return
+
+    # Get non-SUCCESS, non-PERMANENT_ERROR queue items for those match_codes
     queue = []
     missing_date_count = 0
 
-    for item in all_pending:
-        match_code = item.get("match_code")
-        match_date_raw = matches_data.get(match_code)
-        match_date = _parse_match_date(match_date_raw)
+    if window_match_codes:
+        # Supabase .in_() has a limit, chunk it
+        code_list = list(window_match_codes)
+        for i in range(0, len(code_list), 200):
+            chunk = code_list[i : i + 200]
+            response = (
+                supabase.table("match_queue")
+                .select("match_code, match_url, status, retry_count")
+                .neq("status", "SUCCESS")
+                .neq("status", "PERMANENT_ERROR")
+                .in_("match_code", chunk)
+                .execute()
+            )
+            queue.extend(response.data or [])
 
-        if match_date:
-            time_diff = abs(now - match_date)
-            if time_diff <= time_window:
-                queue.append(item)
-        else:
-            # match_date yoksa ELEME: şimdilik queue'ya dahil et
-            missing_date_count += 1
-            queue.append(item)
+    if include_missing_dates:
+        # Also include queue items whose match_code is NOT in matches table
+        all_non_success = (
+            supabase.table("match_queue")
+            .select("match_code, match_url, status, retry_count")
+            .neq("status", "SUCCESS")
+            .neq("status", "PERMANENT_ERROR")
+            .execute()
+        )
+        existing_codes = {item["match_code"] for item in queue}
+        for item in (all_non_success.data or []):
+            mc = item.get("match_code")
+            if mc and mc not in existing_codes:
+                # Check if this match_code has a record in matches
+                if mc not in window_match_codes:
+                    # Check if it exists in matches at all
+                    check = (
+                        supabase.table("matches")
+                        .select("match_code")
+                        .eq("match_code", mc)
+                        .limit(1)
+                        .execute()
+                    )
+                    if not (check.data or []):
+                        missing_date_count += 1
+                        queue.append(item)
+                        existing_codes.add(mc)
 
     if not queue:
-        print(f"No matches within ±24 hours window. Total pending: {len(all_pending)}")
+        logger.info(
+            "No matches to process (window=-%dh/+%dh).",
+            window_hours_before, window_hours_after,
+        )
         return
-    
-    print(
-    f"Found {len(queue)} matches to process "
-    f"(missing_date={missing_date_count}, total_pending={len(all_pending)})"
+
+    logger.info(
+        "Found %d matches to process (missing_date=%d)",
+        len(queue), missing_date_count,
     )
 
     processed = 0
@@ -127,6 +119,7 @@ def run_monitoring_worker() -> None:
         match_url = item.get("match_url") or (
             f"https://arsiv.mackolik.com/Match/Default.aspx?id={match_code}"
         )
+        retry_count = item.get("retry_count") or 0
 
         try:
             process_full_match(match_url, driver)
@@ -140,7 +133,7 @@ def run_monitoring_worker() -> None:
             )
             match_row = (match_res.data or [None])[0]
 
-            if match_row and _is_match_finished(match_row):
+            if match_row and is_match_finished(match_row):
                 new_status = "SUCCESS"
                 success_count += 1
             else:
@@ -151,18 +144,23 @@ def run_monitoring_worker() -> None:
                 {
                     "status": new_status,
                     "error_log": None,
-                    "last_try_at": "now()",
+                    "last_try_at": datetime.now(timezone.utc).isoformat(),
                 }
             ).eq("match_code", match_code).execute()
         except Exception as exc:
             error_count += 1
+            new_retry_count = retry_count + 1
+            new_status = "PERMANENT_ERROR" if new_retry_count >= 5 else "ERROR"
             supabase.table("match_queue").update(
                 {
-                    "status": "ERROR",
+                    "status": new_status,
                     "error_log": str(exc),
-                    "last_try_at": "now()",
+                    "last_try_at": datetime.now(timezone.utc).isoformat(),
+                    "retry_count": new_retry_count,
                 }
             ).eq("match_code", match_code).execute()
+            if new_status == "PERMANENT_ERROR":
+                logger.warning("Match %s reached max retries, marked PERMANENT_ERROR", match_code)
             try:
                 driver.quit()
             except Exception:
@@ -177,10 +175,9 @@ def run_monitoring_worker() -> None:
     except Exception:
         pass
 
-    print(
-        "Monitoring summary: "
-        f"processed={processed} success={success_count} "
-        f"monitoring={still_monitoring_count} error={error_count}"
+    logger.info(
+        "Monitoring summary: processed=%d success=%d monitoring=%d error=%d",
+        processed, success_count, still_monitoring_count, error_count,
     )
 
 

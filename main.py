@@ -8,6 +8,7 @@ Kullanım:
     python main.py update-fixtures [--days-ahead N]  # Livedata ile fikstur guncele
     python main.py run-worker    # Scraper'ı başlat
     python main.py run-monitoring-worker  # MONITORING maçları takip et
+    python main.py run-fast-monitoring    # Yakın maçları hızlı takip et
     python main.py notify-perfect-matches  # Mükemmel eşleşme bildirimleri (Telegram)
     python main.py status        # Kuyruk durumunu göster
     python main.py reset-errors  # Hatalı kayıtları sıfırla
@@ -21,28 +22,31 @@ def show_status():
     """Kuyruk durumunu gösterir."""
     print("\n📊 KUYRUK DURUMU")
     print("=" * 40)
-    
+
     # Toplam kayıt
     total = supabase.table("match_queue").select("*", count="exact").execute()
     print(f"Toplam Kayıt: {total.count}")
-    
+
     # Duruma göre dağılım
-    for status in ["PENDING", "SUCCESS", "ERROR", "BAD_DATA"]:
+    for status in ["PENDING", "SUCCESS", "ERROR", "BAD_DATA", "MONITORING", "PERMANENT_ERROR"]:
         result = supabase.table("match_queue").select("*", count="exact").eq("status", status).execute()
-        emoji = {"PENDING": "⏳", "SUCCESS": "✅", "ERROR": "❌", "BAD_DATA": "⚠️"}.get(status, "•")
+        emoji = {
+            "PENDING": "⏳", "SUCCESS": "✅", "ERROR": "❌",
+            "BAD_DATA": "⚠️", "MONITORING": "🧭", "PERMANENT_ERROR": "🚫",
+        }.get(status, "•")
         print(f"  {emoji} {status}: {result.count}")
-    
+
     print("=" * 40)
 
 def reset_errors():
     """Hatalı kayıtları PENDING durumuna çeker."""
     print("🔄 Hatalı kayıtlar sıfırlanıyor...")
-    
+
     result = supabase.table("match_queue").update({
         "status": "PENDING",
         "error_log": None
     }).neq("status", "SUCCESS").execute()
-    
+
     print(f"✅ {len(result.data)} kayıt sıfırlandı.")
 
 def fill_queue():
@@ -62,13 +66,17 @@ def repair_queue():
 def run_worker():
     """Scraper worker'ı başlatır."""
     from batch_processor import run_worker as start_worker
-    from batch_processor import run_worker as start_worker
     start_worker()
 
 def run_monitoring_worker():
     """MONITORING durumundaki maçları takip eder."""
     from monitoring_worker import run_monitoring_worker as start_worker
     start_worker()
+
+def run_fast_monitoring():
+    """Yakın maçları hızlı takip eder (±3h/1h pencere)."""
+    from monitoring_worker import run_monitoring_worker
+    run_monitoring_worker(window_hours_before=3, window_hours_after=1, include_missing_dates=False)
 
 def notify_perfect_matches():
     """Mükemmel eşleşme bildirimlerini gönderir."""
@@ -85,9 +93,9 @@ def main():
         print(__doc__)
         print("\n💡 Örnek: python main.py status")
         sys.exit(0)
-    
+
     command = sys.argv[1].lower()
-    
+
     if command == "update-fixtures":
         from livedata_update_fixtures import run_from_main
         run_from_main(sys.argv[2:])  # --date / --days-ahead / --write-db hepsini destekler
@@ -97,15 +105,14 @@ def main():
         "fill-queue": fill_queue,
         "run-worker": run_worker,
         "run-monitoring-worker": run_monitoring_worker,
+        "run-fast-monitoring": run_fast_monitoring,
         "notify-perfect-matches": notify_perfect_matches,
         "status": show_status,
         "reset-errors": reset_errors,
-        "reset-errors": reset_errors,
         "repair-queue": repair_queue,
         "create-tables": create_tables_cmd,
-        "update-fixtures": update_fixtures,
     }
-    
+
     if command in commands:
         commands[command]()
     else:

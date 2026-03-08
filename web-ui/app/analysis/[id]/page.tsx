@@ -5,10 +5,9 @@ import { notFound } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { buildMatchSelect, formatMatchDateTime, SCORE_FIELDS, type MatchWithScores } from '@/lib/match'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 3600
 
 const MATCH_SELECT = buildMatchSelect(SCORE_FIELDS)
-const CANDIDATE_PAGE_SIZE = 1000
 
 async function getMatchById(matchId: number) {
   const { data, error } = await supabase
@@ -18,35 +17,7 @@ async function getMatchById(matchId: number) {
     .single()
 
   if (error || !data) return null
-  return data as MatchWithScores
-}
-
-async function getCandidateMatches(matchId: number) {
-  const matches: MatchWithScores[] = []
-  const seenIds = new Set<number>()
-
-  for (let offset = 0; ; offset += CANDIDATE_PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('matches')
-      .select(MATCH_SELECT)
-      .eq('status', 'MS')
-      .not('score_ft', 'is', null)
-      .neq('id', matchId)
-      .order('match_date', { ascending: false })
-      .order('id', { ascending: false })
-      .range(offset, offset + CANDIDATE_PAGE_SIZE - 1)
-
-    if (error || !data) break
-    for (const candidate of data as MatchWithScores[]) {
-      if (seenIds.has(candidate.id)) continue
-      seenIds.add(candidate.id)
-      matches.push(candidate)
-    }
-
-    if (data.length < CANDIDATE_PAGE_SIZE) break
-  }
-
-  return matches
+  return data as unknown as MatchWithScores
 }
 
 type AnalysisParams = {
@@ -64,8 +35,6 @@ export default async function AnalysisPage({
 
   const match = await getMatchById(matchId)
   if (!match) notFound()
-
-  const candidates = await getCandidateMatches(matchId)
 
   return (
     <main className="min-h-screen bg-gray-50 p-3 md:p-5">
@@ -102,7 +71,7 @@ export default async function AnalysisPage({
           </div>
         </section>
 
-        <AnalysisDashboard match={match} candidates={candidates} />
+        <AnalysisDashboard match={match} />
       </div>
     </main>
   )

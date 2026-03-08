@@ -2,6 +2,8 @@ from config import supabase
 from datetime import datetime, timedelta
 import time
 
+from utils import parse_match_date
+
 MONITORING_STATUSES = {"PENDING", "BAD_DATA", "FAILED", "ERROR"}
 
 
@@ -11,27 +13,6 @@ def _chunk_list(items: list, size: int) -> list[list]:
 
 def _format_timestamp(value: datetime) -> str:
     return value.isoformat(sep=" ", timespec="seconds")
-
-
-def _parse_match_date(value):
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        dt_value = value
-    elif isinstance(value, str):
-        try:
-            dt_value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            try:
-                dt_value = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
-            except ValueError:
-                return None
-    else:
-        return None
-
-    if dt_value.tzinfo:
-        return dt_value.astimezone().replace(tzinfo=None)
-    return dt_value
 
 
 def promote_future_matches_to_monitoring(days_ahead: int = 14) -> None:
@@ -191,7 +172,7 @@ def repair_queue_status():
                 status_to_set = "PENDING" # Default
 
                 match_code = m.get("match_code")
-                match_date = _parse_match_date(m.get("match_date"))
+                match_date = parse_match_date(m.get("match_date"))
                 has_score = bool(m.get('score_ft') and m.get('score_ht'))
                 now = datetime.now()
 

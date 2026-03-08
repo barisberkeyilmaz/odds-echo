@@ -1,12 +1,11 @@
 "use client"
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MatchOddsTable, type OddsTableMatch } from '@/components/MatchOddsTable'
 import {
   CATEGORY_LABELS,
   ODDS_CATEGORIES,
   getOutcomeKeys,
-  isCategoryMatch,
   isValidOdd,
   type MatchWithScores,
   type OddsKey,
@@ -14,7 +13,6 @@ import {
 
 type AnalysisDashboardProps = {
   match: MatchWithScores
-  candidates: MatchWithScores[]
 }
 
 const MIN_TOLERANCE = 0
@@ -22,80 +20,37 @@ const MAX_TOLERANCE = 5
 const TOLERANCE_STEP = 0.1
 const DEFAULT_TOLERANCE = 4
 const ALL_OPTION = 'Tümü'
+const PAGE_SIZE = 50
 
 const RESULT_GROUPS: {
   id: string
   label: string
   items: { key: OddsKey; label: string }[]
 }[] = [
-  {
-    id: 'ms',
-    label: 'MS 1/X/2',
-    items: [
-      { key: 'ms_1', label: 'MS 1' },
-      { key: 'ms_x', label: 'MS X' },
-      { key: 'ms_2', label: 'MS 2' },
-    ],
-  },
-  {
-    id: 'iyms',
-    label: 'İY/MS',
-    items: [
-      { key: 'iyms_11', label: '1/1' },
-      { key: 'iyms_1x', label: '1/X' },
-      { key: 'iyms_12', label: '1/2' },
-      { key: 'iyms_x1', label: 'X/1' },
-      { key: 'iyms_xx', label: 'X/X' },
-      { key: 'iyms_x2', label: 'X/2' },
-      { key: 'iyms_21', label: '2/1' },
-      { key: 'iyms_2x', label: '2/X' },
-      { key: 'iyms_22', label: '2/2' },
-    ],
-  },
-  {
-    id: 'kg',
-    label: 'KG Var/Yok',
-    items: [
-      { key: 'kg_var', label: 'KG Var' },
-      { key: 'kg_yok', label: 'KG Yok' },
-    ],
-  },
-  {
-    id: 'au15',
-    label: '1.5 Alt/Üst',
-    items: [
-      { key: 'au_15_alt', label: '1.5 Alt' },
-      { key: 'au_15_ust', label: '1.5 Üst' },
-    ],
-  },
-  {
-    id: 'au25',
-    label: '2.5 Alt/Üst',
-    items: [
-      { key: 'au_25_alt', label: '2.5 Alt' },
-      { key: 'au_25_ust', label: '2.5 Üst' },
-    ],
-  },
-  {
-    id: 'tg',
-    label: 'Toplam Gol',
-    items: [
-      { key: 'tg_0_1', label: '0-1' },
-      { key: 'tg_2_3', label: '2-3' },
-      { key: 'tg_4_5', label: '4-5' },
-      { key: 'tg_6_plus', label: '6+' },
-    ],
-  },
+  { id: 'ms', label: 'MS 1/X/2', items: [{ key: 'ms_1', label: 'MS 1' }, { key: 'ms_x', label: 'MS X' }, { key: 'ms_2', label: 'MS 2' }] },
+  { id: 'iyms', label: 'İY/MS', items: [{ key: 'iyms_11', label: '1/1' }, { key: 'iyms_1x', label: '1/X' }, { key: 'iyms_12', label: '1/2' }, { key: 'iyms_x1', label: 'X/1' }, { key: 'iyms_xx', label: 'X/X' }, { key: 'iyms_x2', label: 'X/2' }, { key: 'iyms_21', label: '2/1' }, { key: 'iyms_2x', label: '2/X' }, { key: 'iyms_22', label: '2/2' }] },
+  { id: 'kg', label: 'KG Var/Yok', items: [{ key: 'kg_var', label: 'KG Var' }, { key: 'kg_yok', label: 'KG Yok' }] },
+  { id: 'au15', label: '1.5 Alt/Üst', items: [{ key: 'au_15_alt', label: '1.5 Alt' }, { key: 'au_15_ust', label: '1.5 Üst' }] },
+  { id: 'au25', label: '2.5 Alt/Üst', items: [{ key: 'au_25_alt', label: '2.5 Alt' }, { key: 'au_25_ust', label: '2.5 Üst' }] },
+  { id: 'tg', label: 'Toplam Gol', items: [{ key: 'tg_0_1', label: '0-1' }, { key: 'tg_2_3', label: '2-3' }, { key: 'tg_4_5', label: '4-5' }, { key: 'tg_6_plus', label: '6+' }] },
 ]
 
 const formatTolerance = (value: number) => value.toFixed(1).replace('.', ',')
 
-export default function AnalysisDashboard({ match, candidates }: AnalysisDashboardProps) {
+type SimilarMatch = OddsTableMatch & MatchWithScores
+
+export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
   const [tolerancePercent, setTolerancePercent] = useState(DEFAULT_TOLERANCE)
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [selectedLeague, setSelectedLeague] = useState(ALL_OPTION)
   const [selectedSeason, setSelectedSeason] = useState(ALL_OPTION)
   const [selectedMinMatchCount, setSelectedMinMatchCount] = useState<number | null>(null)
+  const [similarMatches, setSimilarMatches] = useState<SimilarMatch[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(0)
+  const [totalCategories, setTotalCategories] = useState(0)
+  const [isLoading, setIsLoading] = useState(false)
 
   const availableCategories = useMemo(
     () =>
@@ -114,15 +69,6 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
     [match, availableCategories]
   )
 
-  const leagueOptions = useMemo(() => {
-    const unique = new Set<string>()
-    if (match.league) unique.add(match.league)
-    candidates.forEach((candidate) => {
-      if (candidate.league) unique.add(candidate.league)
-    })
-    return [ALL_OPTION, ...Array.from(unique).sort()]
-  }, [candidates, match.league])
-
   const minMatchCountOptions = useMemo(() => {
     const maxCount = availableCategories.length
     if (maxCount === 0) return []
@@ -133,64 +79,64 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
     return options
   }, [availableCategories.length])
 
-  const seasonOptions = useMemo(() => {
-    const unique = new Set<string>()
-    if (match.season) unique.add(match.season)
-    candidates.forEach((candidate) => {
-      if (candidate.season) unique.add(candidate.season)
-    })
-    return [ALL_OPTION, ...Array.from(unique).sort().reverse()]
-  }, [candidates, match.season])
+  const fetchSimilarMatches = useCallback(async (currentPage: number) => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('tolerance', String(tolerancePercent))
+      params.set('page', String(currentPage))
+      params.set('limit', String(PAGE_SIZE))
+      if (selectedLeague !== ALL_OPTION) params.set('league', selectedLeague)
+      if (selectedSeason !== ALL_OPTION) params.set('season', selectedSeason)
 
-  const filteredCandidates = useMemo(
-    () =>
-      candidates.filter((candidate) => {
-        const leagueMatch = selectedLeague === ALL_OPTION || candidate.league === selectedLeague
-        const seasonMatch = selectedSeason === ALL_OPTION || candidate.season === selectedSeason
-        return leagueMatch && seasonMatch
-      }),
-    [candidates, selectedLeague, selectedSeason]
-  )
+      const res = await fetch(`/api/match/${match.id}/similar?${params.toString()}`)
+      const data = await res.json()
 
-  const matchesWithSimilarity = useMemo(() => {
-    if (availableCategories.length === 0) return []
-    const toleranceValue = tolerancePercent / 100
-    const toleranceAbs = toleranceValue
-    const tolerancePct = toleranceValue
+      const matches: SimilarMatch[] = (data.matches ?? []).map((m: SimilarMatch) => ({
+        ...m,
+        matchCount: m.matchCount ?? 0,
+        matchedCategoryIds: m.matchedCategoryIds ?? [],
+      }))
 
-    return filteredCandidates
-      .filter((candidate) => candidate.id !== match.id)
-      .map((candidate) => {
-        const matchedCategoryIds = availableCategories
-          .filter((category) =>
-            isCategoryMatch(match, candidate, category.fields, toleranceAbs, tolerancePct)
-          )
-          .map((category) => category.id)
+      setSimilarMatches(matches)
+      setTotal(data.total ?? 0)
+      setTotalPages(data.totalPages ?? 0)
+      setTotalCategories(data.totalCategories ?? 0)
+    } catch {
+      setSimilarMatches([])
+      setTotal(0)
+      setTotalPages(0)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [match.id, tolerancePercent, selectedLeague, selectedSeason])
 
-        return {
-          ...candidate,
-          matchedCategoryIds,
-          matchCount: matchedCategoryIds.length,
-        }
-      })
-      .filter((candidate) => candidate.matchCount > 0)
-      .sort((a, b) => {
-        if (b.matchCount !== a.matchCount) return b.matchCount - a.matchCount
-        return new Date(b.match_date).getTime() - new Date(a.match_date).getTime()
-      })
-  }, [availableCategories, filteredCandidates, match, tolerancePercent])
+  useEffect(() => {
+    setPage(1)
+    const timer = setTimeout(() => {
+      fetchSimilarMatches(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [fetchSimilarMatches])
 
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage)
+    fetchSimilarMatches(newPage)
+  }
+
+  // Client-side filtering by category and min match count
   const filteredMatches = useMemo(() => {
-    const matchesByCount =
-      selectedMinMatchCount === null
-        ? matchesWithSimilarity
-        : matchesWithSimilarity.filter((candidate) => candidate.matchCount >= selectedMinMatchCount)
-
-    if (selectedCategoryIds.length === 0) return matchesByCount
-    return matchesByCount.filter((candidate) =>
-      selectedCategoryIds.every((categoryId) => candidate.matchedCategoryIds.includes(categoryId))
-    )
-  }, [matchesWithSimilarity, selectedCategoryIds, selectedMinMatchCount])
+    let filtered = similarMatches
+    if (selectedMinMatchCount !== null) {
+      filtered = filtered.filter((m) => m.matchCount >= selectedMinMatchCount)
+    }
+    if (selectedCategoryIds.length > 0) {
+      filtered = filtered.filter((m) =>
+        selectedCategoryIds.every((catId) => m.matchedCategoryIds.includes(catId))
+      )
+    }
+    return filtered
+  }, [similarMatches, selectedCategoryIds, selectedMinMatchCount])
 
   const categoryStats = useMemo(() => {
     const counts = new Map<string, number>()
@@ -224,10 +170,7 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
 
     RESULT_GROUPS.forEach((group) => {
       groupTotals.set(group.id, 0)
-      groupCounts.set(
-        group.id,
-        new Map(group.items.map((item) => [item.key, 0]))
-      )
+      groupCounts.set(group.id, new Map(group.items.map((item) => [item.key, 0])))
     })
 
     filteredMatches.forEach((candidate) => {
@@ -245,15 +188,15 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
     })
 
     return RESULT_GROUPS.map((group) => {
-      const total = groupTotals.get(group.id) ?? 0
+      const groupTotal = groupTotals.get(group.id) ?? 0
       const counts = groupCounts.get(group.id) ?? new Map()
       return {
         id: group.id,
         label: group.label,
-        total,
+        total: groupTotal,
         items: group.items.map((item) => {
           const count = counts.get(item.key) ?? 0
-          const percent = total > 0 ? Math.round((count / total) * 100) : 0
+          const percent = groupTotal > 0 ? Math.round((count / groupTotal) * 100) : 0
           return { ...item, count, percent }
         }),
       }
@@ -290,11 +233,7 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
         <div className="rounded-xl border border-gray-100 bg-white p-4">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-700">Filtreler</h3>
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="text-[11px] text-blue-600 hover:text-blue-700"
-            >
+            <button type="button" onClick={resetFilters} className="text-[11px] text-blue-600 hover:text-blue-700">
               Filtreleri temizle
             </button>
           </div>
@@ -303,31 +242,23 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
             <div className="grid gap-3 md:grid-cols-2">
               <label className="text-xs text-gray-500">
                 Lig
-                <select
-                  value={selectedLeague}
-                  onChange={(event) => setSelectedLeague(event.target.value)}
+                <input
+                  type="text"
+                  placeholder="Tümü"
+                  value={selectedLeague === ALL_OPTION ? '' : selectedLeague}
+                  onChange={(event) => setSelectedLeague(event.target.value.trim() || ALL_OPTION)}
                   className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
-                >
-                  {leagueOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
               <label className="text-xs text-gray-500">
                 Sezon
-                <select
-                  value={selectedSeason}
-                  onChange={(event) => setSelectedSeason(event.target.value)}
+                <input
+                  type="text"
+                  placeholder="Tümü"
+                  value={selectedSeason === ALL_OPTION ? '' : selectedSeason}
+                  onChange={(event) => setSelectedSeason(event.target.value.trim() || ALL_OPTION)}
                   className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
-                >
-                  {seasonOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
             </div>
 
@@ -426,9 +357,7 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
           <div className="rounded-xl border border-gray-100 bg-white p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-700">Kategori istatistikleri</h3>
-              <span className="text-[11px] text-gray-400">
-                {`${filteredMatches.length} maç`}
-              </span>
+              <span className="text-[11px] text-gray-400">{filteredMatches.length} maç</span>
             </div>
             {filteredMatches.length === 0 ? (
               <div className="text-xs text-gray-400">Gösterilecek istatistik bulunamadı.</div>
@@ -438,10 +367,7 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
                   <div key={stat.id} className="flex items-center gap-3">
                     <span className="w-24 text-[11px] text-gray-500">{stat.label}</span>
                     <div className="flex-1 h-2 rounded-full bg-gray-100">
-                      <div
-                        className="h-2 rounded-full bg-emerald-400"
-                        style={{ width: `${stat.barWidth}%` }}
-                      />
+                      <div className="h-2 rounded-full bg-emerald-400" style={{ width: `${stat.barWidth}%` }} />
                     </div>
                     <span className="text-[11px] text-gray-500">{stat.count}</span>
                     <span className="text-[11px] text-gray-400">%{stat.percent}</span>
@@ -457,9 +383,7 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
           <div className="rounded-xl border border-gray-100 bg-white p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-700">Sonuç dağılımı</h3>
-              <span className="text-[11px] text-gray-400">
-                {`${filteredMatches.length} maç`}
-              </span>
+              <span className="text-[11px] text-gray-400">{filteredMatches.length} maç</span>
             </div>
             {filteredMatches.length === 0 ? (
               <div className="text-xs text-gray-400">Gösterilecek veri bulunamadı.</div>
@@ -469,19 +393,14 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
                   <div key={group.id}>
                     <div className="text-[11px] font-semibold text-gray-500 mb-2">{group.label}</div>
                     {group.total === 0 ? (
-                      <div className="text-[11px] text-gray-400">
-                        Bu kategoride skor bulunamadı.
-                      </div>
+                      <div className="text-[11px] text-gray-400">Bu kategoride skor bulunamadı.</div>
                     ) : (
                       <div className="space-y-2">
                         {group.items.map((item) => (
                           <div key={item.key} className="flex items-center gap-3">
                             <span className="w-16 text-[11px] text-gray-500">{item.label}</span>
                             <div className="flex-1 h-2 rounded-full bg-gray-100">
-                              <div
-                                className="h-2 rounded-full bg-blue-400"
-                                style={{ width: `${item.percent}%` }}
-                              />
+                              <div className="h-2 rounded-full bg-blue-400" style={{ width: `${item.percent}%` }} />
                             </div>
                             <span className="text-[11px] text-gray-500">{item.count}</span>
                             <span className="text-[11px] text-gray-400">%{item.percent}</span>
@@ -502,18 +421,44 @@ export default function AnalysisDashboard({ match, candidates }: AnalysisDashboa
 
       <section className="mt-8">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-700">
-            Benzer Oranlı Geçmiş Maçlar
-          </h2>
-          <span className="text-xs text-gray-500">{`${filteredMatches.length} eşleşme`}</span>
+          <h2 className="text-sm font-semibold text-gray-700">Benzer Oranlı Geçmiş Maçlar</h2>
+          <span className="text-xs text-gray-500">{total} eşleşme</span>
         </div>
 
-        {filteredMatches.length === 0 ? (
+        {isLoading ? (
+          <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500 text-center">
+            Yükleniyor...
+          </div>
+        ) : filteredMatches.length === 0 ? (
           <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500">
             Seçili filtrelerde eşleşen geçmiş maç bulunamadı.
           </div>
         ) : (
-          <MatchOddsTable matches={filteredMatches} totalCategories={availableCategories.length} />
+          <>
+            <MatchOddsTable matches={filteredMatches} totalCategories={totalCategories || availableCategories.length} />
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-3 mt-4">
+                <button
+                  type="button"
+                  disabled={page <= 1}
+                  onClick={() => handlePageChange(page - 1)}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40"
+                >
+                  Önceki
+                </button>
+                <span className="text-xs text-gray-500">{page} / {totalPages}</span>
+                <button
+                  type="button"
+                  disabled={page >= totalPages}
+                  onClick={() => handlePageChange(page + 1)}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40"
+                >
+                  Sonraki
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
     </>

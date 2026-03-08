@@ -4,15 +4,13 @@ import FixtureDatePicker from '@/components/FixtureDatePicker'
 import FixtureTable from '@/components/FixtureTable'
 import {
   buildMatchSelect,
-  groupMatchesByLocalDate,
   isValidOdd,
   isValidFixture,
   SCORE_FIELDS,
   type MatchWithScores,
 } from '@/lib/match'
 
-// Sayfanın dinamik olmasını sağla (Cache kullanma)
-export const dynamic = 'force-dynamic'
+export const revalidate = 300
 
 const FIXTURE_SELECT = buildMatchSelect(SCORE_FIELDS)
 const isValidDateKey = (value?: string) => {
@@ -41,51 +39,45 @@ const hasAtLeastTwoPrimaryOdds = (record: MatchWithScores) => {
   return count >= 2
 }
 
-type FixtureQueryResult = {
-  fixtures: MatchWithScores[]
-  errorMessage: string | null
+async function getFixturesForDate(dateKey: string) {
+  const { data, error } = await supabase
+    .from('matches')
+    .select(FIXTURE_SELECT)
+    .gte('match_date', `${dateKey}T00:00:00`)
+    .lte('match_date', `${dateKey}T23:59:59`)
+    .order('match_date', { ascending: true })
+
+  if (error) {
+    console.error('Veri çekme hatası:', error)
+    return { fixtures: [] as MatchWithScores[], errorMessage: error.message }
+  }
+
+  const fixtures = ((data ?? []) as unknown as MatchWithScores[]).filter(
+    (record) => isValidFixture(record) && hasAtLeastTwoPrimaryOdds(record)
+  )
+
+  return { fixtures, errorMessage: null }
 }
 
-async function getFixtures(): Promise<FixtureQueryResult> {
-  const PAGE_SIZE = 1000
-  let from = 0
-  let totalCount: number | null = null
-  const allMatches: MatchWithScores[] = []
+async function getAvailableDateKeys() {
+  const { data, error } = await supabase
+    .from('matches')
+    .select('match_date')
+    .not('match_date', 'is', null)
+    .order('match_date', { ascending: true })
+    .limit(5000)
 
-  while (true) {
-    const { data, error, count } = await supabase
-      .from('matches')
-      .select(FIXTURE_SELECT, { count: from === 0 ? 'exact' : undefined })
-      .order('match_date', { ascending: true })
-      .range(from, from + PAGE_SIZE - 1)
+  if (error || !data) return []
 
-    if (error) {
-      console.error('Veri çekme hatası:', error)
-      return { fixtures: [], errorMessage: error.message }
+  const dateSet = new Set<string>()
+  data.forEach((row) => {
+    if (row.match_date) {
+      const key = row.match_date.split('T')[0]
+      if (key) dateSet.add(key)
     }
+  })
 
-    if (totalCount === null && typeof count === 'number') {
-      totalCount = count
-    }
-
-    const page = (data ?? []) as MatchWithScores[]
-    allMatches.push(...page)
-
-    if (page.length < PAGE_SIZE) {
-      break
-    }
-
-    from += PAGE_SIZE
-
-    if (totalCount !== null && from >= totalCount) {
-      break
-    }
-  }
-
-  return {
-    fixtures: allMatches.filter((record) => isValidFixture(record) && hasAtLeastTwoPrimaryOdds(record)),
-    errorMessage: null,
-  }
+  return Array.from(dateSet).sort()
 }
 
 type FixtureSearchParams = {
@@ -97,29 +89,28 @@ export default async function Home({
 }: {
   searchParams?: FixtureSearchParams | Promise<FixtureSearchParams>
 }) {
-  const { fixtures, errorMessage } = await getFixtures()
-  const groupedMatches = groupMatchesByLocalDate(fixtures)
-  const todayKey = getDateKey(new Date())
-  const availableDateKeys = groupedMatches.map((group) => group.dateKey)
   const resolvedSearchParams = await searchParams
   const dateParam = Array.isArray(resolvedSearchParams?.date)
     ? resolvedSearchParams?.date[0]
     : resolvedSearchParams?.date
-  const selectedDateKey = isValidDateKey(dateParam) ? dateParam : todayKey
-  const visibleGroups = groupedMatches.filter((group) => group.dateKey === selectedDateKey)
-  const matchesForDate = visibleGroups.flatMap((group) => group.matches)
-  const visibleMatchCount = matchesForDate.length
+  const todayKey = getDateKey(new Date())
+  const selectedDateKey = isValidDateKey(dateParam) ? dateParam! : todayKey
+
+  const [{ fixtures, errorMessage }, availableDateKeys] = await Promise.all([
+    getFixturesForDate(selectedDateKey),
+    getAvailableDateKeys(),
+  ])
 
   return (
     <main className="min-h-screen bg-gray-50 p-3 md:p-5">
       <div className="max-w-[1400px] mx-auto">
-        <Header totalMatches={visibleMatchCount} />
+        <Header totalMatches={fixtures.length} />
         <p className="text-xs text-gray-400 mb-6">
           Eksik tarih veya takım bilgisi olan maçlar listede gösterilmez. Eksik oranlar '-' olarak görünür.
         </p>
 
         <FixtureDatePicker
-          availableDateKeys={availableDateKeys}
+          availableDateKeys={availableDateKeys.length > 0 ? availableDateKeys : [todayKey]}
           selectedDateKey={selectedDateKey}
         />
 
@@ -130,25 +121,16 @@ export default async function Home({
         ) : null}
 
         {fixtures.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-lg shadow">
-            <h2 className="text-xl text-gray-600">Henüz fikstür verisi yok.</h2>
-            <p className="text-gray-400 mt-2">Lütfen terminalden `python3 main.py update-fixtures` komutunu çalıştırın.</p>
+          <div className="text-center py-16 bg-white rounded-lg shadow border border-gray-100">
+            <h2 className="text-lg text-gray-600">Seçili tarihte maç bulunamadı.</h2>
+            <p className="text-gray-400 mt-2">
+              {selectedDateKey === todayKey
+                ? 'Veritabanımızda bugün için maç bulunmamaktadır.'
+                : `Veritabanımızda bu tarih için maç bulunmamaktadır: ${formatDateKeyLabel(selectedDateKey)}`}
+            </p>
           </div>
         ) : (
-          <>
-            {matchesForDate.length === 0 ? (
-              <div className="text-center py-16 bg-white rounded-lg shadow border border-gray-100">
-                <h2 className="text-lg text-gray-600">Seçili tarihte maç bulunamadı.</h2>
-                <p className="text-gray-400 mt-2">
-                  {selectedDateKey === todayKey
-                    ? 'Veritabanımızda bugün için maç bulunmamaktadır.'
-                    : `Veritabanımızda bu tarih için maç bulunmamaktadır: ${formatDateKeyLabel(selectedDateKey)}`}
-                </p>
-              </div>
-            ) : (
-              <FixtureTable matches={matchesForDate} />
-            )}
-          </>
+          <FixtureTable matches={fixtures} />
         )}
       </div>
     </main>

@@ -171,6 +171,6 @@ export const isCategoryMatch = (
     const baseValue = base[field]
     const candidateValue = candidate[field]
 
-    if (!isValidOdd(baseValue) || !isValidOdd(candidateValue)) return false
+    if (!isValidOdd(baseValue) || !isValidOdd(candidateValue) || baseValue === null || candidateValue === null) return false
     return areOddsSimilar(baseValue, candidateValue, toleranceAbs, tolerancePct)
   })

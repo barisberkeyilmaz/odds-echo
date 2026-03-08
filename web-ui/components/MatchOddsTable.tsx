@@ -1,3 +1,7 @@
+"use client"
+
+import { useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   formatMatchDateTime,
   formatOdd,
@@ -57,89 +61,159 @@ const getMatchBadgeClass = (count: number, total: number) => {
   return 'bg-orange-100 text-orange-700'
 }
 
+const ROW_HEIGHT = 60
+const VIRTUALIZATION_THRESHOLD = 50
+
 export const MatchOddsTable = ({
   matches,
   totalCategories,
 }: {
   matches: OddsTableMatch[]
   totalCategories: number
-}) => (
-  <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
-    <table className="min-w-full text-xs">
-      <thead className="bg-gray-50 text-gray-500">
-        <tr>
-          <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Maç</th>
-          <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Tarih</th>
-          <th rowSpan={2} className="px-3 py-3 text-center font-semibold">Skor</th>
-          {ODDS_GROUPS.map((group) => (
-            <th key={group.id} colSpan={group.fields.length} className="px-3 py-2 text-center font-semibold">
-              {group.label}
-            </th>
-          ))}
-        </tr>
-        <tr>
-          {ODDS_COLUMNS.map((field) => (
-            <th key={field} className="px-3 py-2 text-center font-semibold">
-              {ODDS_LABELS[field]}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-gray-100 text-gray-700">
-        {matches.map((match) => {
-          const outcomeKeys = getOutcomeKeys(match)
-          return (
-            <tr key={match.id} className="hover:bg-gray-50">
-              <td className="px-3 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-gray-900">
-                      {match.home_team} vs {match.away_team}
-                    </div>
-                    <div className="text-[10px] text-gray-400">{match.league}</div>
-                  </div>
-                  <div
-                    className={`shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-semibold ${getMatchBadgeClass(
-                      match.matchCount,
-                      totalCategories
-                    )}`}
-                  >
-                    {totalCategories > 0
-                      ? `${match.matchCount}/${totalCategories} eşleşme`
-                      : `${match.matchCount} eşleşme`}
-                  </div>
-                </div>
-                {match.matchedCategoryIds.length > 0 ? (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {match.matchedCategoryIds.map((categoryId) => (
-                      <span key={categoryId} className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">
-                        {CATEGORY_LABELS[categoryId] ?? categoryId}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </td>
-              <td className="px-3 py-3" suppressHydrationWarning>
-                {formatMatchDateTime(match.match_date, { includeYear: true })}
-              </td>
-              <td className="px-3 py-3 text-center">
-                <div>{match.score_ft ?? '-'}</div>
-                {match.score_ht ? (
-                  <div className="text-[10px] text-gray-400">{`İY: ${match.score_ht}`}</div>
-                ) : null}
-              </td>
-              {ODDS_COLUMNS.map((field) => (
-                <td
-                  key={`${match.id}-${field}`}
-                  className={`px-3 py-3 text-center font-mono border ${getCellClass(outcomeKeys.has(field))}`}
-                >
-                  {formatOdd(match[field])}
-                </td>
+}) => {
+  const parentRef = useRef<HTMLDivElement>(null)
+  const useVirtual = matches.length > VIRTUALIZATION_THRESHOLD
+
+  const virtualizer = useVirtualizer({
+    count: matches.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+    enabled: useVirtual,
+  })
+
+  const renderRow = (match: OddsTableMatch) => {
+    const outcomeKeys = getOutcomeKeys(match)
+    return (
+      <>
+        <td className="px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="font-semibold text-gray-900">
+                {match.home_team} vs {match.away_team}
+              </div>
+              <div className="text-[10px] text-gray-400">{match.league}</div>
+            </div>
+            <div
+              className={`shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-semibold ${getMatchBadgeClass(
+                match.matchCount,
+                totalCategories
+              )}`}
+            >
+              {totalCategories > 0
+                ? `${match.matchCount}/${totalCategories} eşleşme`
+                : `${match.matchCount} eşleşme`}
+            </div>
+          </div>
+          {match.matchedCategoryIds.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {match.matchedCategoryIds.map((categoryId) => (
+                <span key={categoryId} className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">
+                  {CATEGORY_LABELS[categoryId] ?? categoryId}
+                </span>
               ))}
+            </div>
+          ) : null}
+        </td>
+        <td className="px-3 py-3" suppressHydrationWarning>
+          {formatMatchDateTime(match.match_date, { includeYear: true })}
+        </td>
+        <td className="px-3 py-3 text-center">
+          <div>{match.score_ft ?? '-'}</div>
+          {match.score_ht ? (
+            <div className="text-[10px] text-gray-400">{`İY: ${match.score_ht}`}</div>
+          ) : null}
+        </td>
+        {ODDS_COLUMNS.map((field) => (
+          <td
+            key={`${match.id}-${field}`}
+            className={`px-3 py-3 text-center font-mono border ${getCellClass(outcomeKeys.has(field))}`}
+          >
+            {formatOdd(match[field])}
+          </td>
+        ))}
+      </>
+    )
+  }
+
+  const tableHeader = (
+    <thead className="bg-gray-50 text-gray-500 sticky top-0 z-10">
+      <tr>
+        <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Maç</th>
+        <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Tarih</th>
+        <th rowSpan={2} className="px-3 py-3 text-center font-semibold">Skor</th>
+        {ODDS_GROUPS.map((group) => (
+          <th key={group.id} colSpan={group.fields.length} className="px-3 py-2 text-center font-semibold">
+            {group.label}
+          </th>
+        ))}
+      </tr>
+      <tr>
+        {ODDS_COLUMNS.map((field) => (
+          <th key={field} className="px-3 py-2 text-center font-semibold">
+            {ODDS_LABELS[field]}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  )
+
+  if (!useVirtual) {
+    return (
+      <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+        <table className="min-w-full text-xs">
+          {tableHeader}
+          <tbody className="divide-y divide-gray-100 text-gray-700">
+            {matches.map((match) => (
+              <tr key={match.id} className="hover:bg-gray-50">
+                {renderRow(match)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      ref={parentRef}
+      className="overflow-x-auto overflow-y-auto max-h-[600px] rounded-xl border border-gray-100 bg-white"
+    >
+      <table className="min-w-full text-xs">
+        {tableHeader}
+        <tbody className="divide-y divide-gray-100 text-gray-700">
+          {virtualizer.getVirtualItems().length > 0 && (
+            <tr style={{ height: virtualizer.getVirtualItems()[0].start }}>
+              <td colSpan={3 + ODDS_COLUMNS.length} />
             </tr>
-          )
-        })}
-      </tbody>
-    </table>
-  </div>
-)
+          )}
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const match = matches[virtualRow.index]
+            return (
+              <tr
+                key={match.id}
+                data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
+                className="hover:bg-gray-50"
+              >
+                {renderRow(match)}
+              </tr>
+            )
+          })}
+          {virtualizer.getVirtualItems().length > 0 && (
+            <tr
+              style={{
+                height:
+                  virtualizer.getTotalSize() -
+                  (virtualizer.getVirtualItems().at(-1)?.end ?? 0),
+              }}
+            >
+              <td colSpan={3 + ODDS_COLUMNS.length} />
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}

@@ -4,15 +4,13 @@ import PerfectMatchDashboard from '@/components/PerfectMatchDashboard'
 import FixtureDatePicker from '@/components/FixtureDatePicker'
 import {
     buildMatchSelect,
-    groupMatchesByLocalDate,
     isValidOdd,
     isValidFixture,
     SCORE_FIELDS,
     type MatchWithScores,
 } from '@/lib/match'
 
-// Force dynamic rendering (no cache)
-export const dynamic = 'force-dynamic'
+export const revalidate = 300
 
 const MATCH_SELECT = buildMatchSelect(SCORE_FIELDS)
 
@@ -42,72 +40,26 @@ const hasAtLeastTwoPrimaryOdds = (record: MatchWithScores) => {
     return count >= 2
 }
 
-type QueryResult = {
-    fixtures: MatchWithScores[]
-    historicalMatches: MatchWithScores[]
-    errorMessage: string | null
-}
-
-async function getMatchData(selectedDateKey: string): Promise<QueryResult> {
-    const PAGE_SIZE = 1000
-
-    // Fetch fixtures for selected date
-    const fixtureStart = `${selectedDateKey}T00:00:00`
-    const fixtureEnd = `${selectedDateKey}T23:59:59`
-
-    const { data: fixtureData, error: fixtureError } = await supabase
+async function getFixturesForDate(dateKey: string) {
+    const { data, error } = await supabase
         .from('matches')
         .select(MATCH_SELECT)
-        .gte('match_date', fixtureStart)
-        .lte('match_date', fixtureEnd)
+        .gte('match_date', `${dateKey}T00:00:00`)
+        .lte('match_date', `${dateKey}T23:59:59`)
         .order('match_date', { ascending: true })
 
-    if (fixtureError) {
-        console.error('Fixture fetch error:', fixtureError)
-        return { fixtures: [], historicalMatches: [], errorMessage: fixtureError.message }
+    if (error) {
+        return { fixtures: [] as MatchWithScores[], errorMessage: error.message }
     }
 
-    const fixtures = ((fixtureData ?? []) as unknown as MatchWithScores[]).filter(
+    const fixtures = ((data ?? []) as unknown as MatchWithScores[]).filter(
         (record) => isValidFixture(record) && hasAtLeastTwoPrimaryOdds(record)
     )
 
-    // Fetch historical matches with scores (finished matches)
-    let from = 0
-    const allHistorical: MatchWithScores[] = []
-
-    while (true) {
-        const { data, error } = await supabase
-            .from('matches')
-            .select(MATCH_SELECT)
-            .not('score_ft', 'is', null)
-            .lt('match_date', fixtureStart) // Only past matches
-            .order('match_date', { ascending: false })
-            .range(from, from + PAGE_SIZE - 1)
-
-        if (error) {
-            console.error('Historical fetch error:', error)
-            return { fixtures, historicalMatches: [], errorMessage: error.message }
-        }
-
-        const page = (data ?? []) as unknown as MatchWithScores[]
-        allHistorical.push(...page)
-
-        if (page.length < PAGE_SIZE) {
-            break
-        }
-
-        from += PAGE_SIZE
-    }
-
-    const historicalMatches = allHistorical.filter(
-        (record) => isValidFixture(record) && hasAtLeastTwoPrimaryOdds(record)
-    )
-
-    return { fixtures, historicalMatches, errorMessage: null }
+    return { fixtures, errorMessage: null }
 }
 
 async function getAvailableDates(): Promise<string[]> {
-    // Get all dates that have fixtures with odds
     const { data, error } = await supabase
         .from('matches')
         .select('match_date')
@@ -144,9 +96,9 @@ export default async function PerfectMatchPage({
     const todayKey = getDateKey(new Date())
     const selectedDateKey = isValidDateKey(dateParam) ? dateParam! : todayKey
 
-    const [{ fixtures, historicalMatches, errorMessage }, availableDateKeys] =
+    const [{ fixtures, errorMessage }, availableDateKeys] =
         await Promise.all([
-            getMatchData(selectedDateKey),
+            getFixturesForDate(selectedDateKey),
             getAvailableDates(),
         ])
 
@@ -157,7 +109,7 @@ export default async function PerfectMatchPage({
 
                 <div className="mb-6">
                     <h2 className="text-xl font-bold text-gray-800 mb-2">
-                        🎯 Mükemmel Eşleşme
+                        Mükemmel Eşleşme
                     </h2>
                     <p className="text-sm text-gray-500">
                         Bugünkü maçların oranlarını geçmiş maçlarla karşılaştır ve{' '}
@@ -189,10 +141,7 @@ export default async function PerfectMatchPage({
                         </p>
                     </div>
                 ) : (
-                    <PerfectMatchDashboard
-                        fixtures={fixtures}
-                        historicalMatches={historicalMatches}
-                    />
+                    <PerfectMatchDashboard fixtures={fixtures} />
                 )}
             </div>
         </main>

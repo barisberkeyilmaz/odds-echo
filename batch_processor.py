@@ -1,5 +1,6 @@
 import time
 import os
+from datetime import datetime, timezone
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -21,7 +22,7 @@ def force_cleanup():
     try:
         os.system("pkill -9 -f chrome")
         os.system("rm -rf /tmp/.org.chromium.Chromium.*")
-    except: pass
+    except Exception: pass
 
 def run_worker():
     print("🔄 Worker başlatılıyor... (Supabase limit: 500/döngü)")
@@ -31,7 +32,7 @@ def run_worker():
         # ERROR: Hata almış tekrar denenecekler
         # MONITORING: Fikstür maçları (sürekli takip)
         # last_try_at ile sırala ki en eski taranan önce gelsin.
-        response = supabase.table("match_queue").select("*").neq("status", "SUCCESS").order("last_try_at", desc=False).limit(500).execute()
+        response = supabase.table("match_queue").select("*").neq("status", "SUCCESS").neq("status", "PERMANENT_ERROR").order("last_try_at", desc=False).limit(500).execute()
         queue = response.data
         
         if not queue:
@@ -55,26 +56,30 @@ def run_worker():
                     supabase.table("match_queue").update({
                         "status": status,
                         "error_log": error,
-                        "last_try_at": "now()"
+                        "last_try_at": datetime.now(timezone.utc).isoformat()
                     }).eq("match_code", item['match_code']).execute()
                     
                 except Exception as e:
                     print(f"      ⚠️ Hata: {e}")
+                    retry_count = (item.get("retry_count") or 0) + 1
+                    new_status = "PERMANENT_ERROR" if retry_count >= 5 else "ERROR"
                     supabase.table("match_queue").update({
-                        "status": "ERROR",
-                        "error_log": str(e)
+                        "status": new_status,
+                        "error_log": str(e),
+                        "last_try_at": datetime.now(timezone.utc).isoformat(),
+                        "retry_count": retry_count,
                     }).eq("match_code", item['match_code']).execute()
                     
                     # Kritik hata olursa driver yenile
                     try:
                         driver.quit()
                         driver = create_driver()
-                    except: pass
+                    except Exception: pass
                 
                 time.sleep(0.5)
                 
             try: driver.quit()
-            except: pass
+            except Exception: pass
             time.sleep(1)
 
 if __name__ == "__main__":

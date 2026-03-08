@@ -6,3 +6,5 @@ __pycache__/
 geckodriver.log
 scraper_data/
 .vscode/
+scraper.log
+scraper.log.*

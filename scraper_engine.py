@@ -11,14 +11,14 @@ from config import supabase
 def clean_odd(value):
     if not value or value == '-' or value == '': return None
     try: return float(value.replace(',', '.'))
-    except: return None
+    except Exception: return None
 
 def parse_date(date_str):
     try:
         clean_str = date_str.replace('Tarih :', '').strip()
         dt_obj = datetime.strptime(clean_str, '%d.%m.%Y %H:%M')
         return dt_obj.strftime('%Y-%m-%d %H:%M:%S')
-    except: return None
+    except Exception: return None
 
 def process_full_match(match_url, driver):
     """Tek bir maçı işleyen ana fonksiyon"""
@@ -35,7 +35,7 @@ def process_full_match(match_url, driver):
         parsed = urlparse(match_url)
         qs = parse_qs(parsed.query)
         match_code = qs['id'][0] if 'id' in qs else match_url.lower().split('/mac/')[1].split('/')[0]
-    except: match_code = str(int(time.time()))
+    except Exception: match_code = str(int(time.time()))
 
     # 2. Metadata
     match_info = {"league": None, "season": None, "match_date": None}
@@ -76,7 +76,7 @@ def process_full_match(match_url, driver):
             score_match = re.search(r'(\d+)\s*[-:]\s*(\d+)', raw)
             if score_match:
                 score_ht = f"{score_match.group(1)} - {score_match.group(2)}"
-    except: pass
+    except Exception: pass
 
     # 4. İY Skor Fallback
     if (not score_ht) and match_code != "0":
@@ -96,7 +96,7 @@ def process_full_match(match_url, driver):
                 score_match = re.search(r'(\d+)\s*[-:]\s*(\d+)', raw)
                 if score_match:
                     score_ht = f"{score_match.group(1)} - {score_match.group(2)}"
-        except: pass
+        except Exception: pass
 
     # 5. Takımlar
     home, away = None, None
@@ -105,7 +105,7 @@ def process_full_match(match_url, driver):
             home = soup.find("a", class_="left-block-team-name").get_text(strip=True)
         if soup.find("a", class_="r-left-block-team-name"):
             away = soup.find("a", class_="r-left-block-team-name").get_text(strip=True)
-    except: pass
+    except Exception: pass
 
     row = {
         "match_code": match_code,
@@ -172,7 +172,7 @@ def process_full_match(match_url, driver):
                             "tg_4_5": clean_odd(d.get('4-5 Gol')), "tg_6_plus": clean_odd(d.get('6+ Gol'))
                         })
                 except Exception as e:
-                    pass
+                    print(f"Odds parse hatası '{mname}': {e}")
 
     # Kaydet
     # Tek Tablo Stratejisi: Her şeyi 'matches' tablosuna yaz.
@@ -188,8 +188,8 @@ def process_full_match(match_url, driver):
             mdate = datetime.strptime(match_info["match_date"], '%Y-%m-%d %H:%M:%S')
             now = datetime.now()
             if mdate > now: is_future_match = True
-        except: pass
-    
+        except Exception: pass
+
     # Kuyruk Yönetimi için Dönüş Değerleri
     
     # Zorunlu alan kontrolü

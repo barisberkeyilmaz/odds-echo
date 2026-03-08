@@ -1,27 +1,23 @@
 "use client"
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ODDS_CATEGORIES,
   ODDS_FIELDS,
-  areOddsSimilar,
+  getOutcomeKeys,
   formatMatchDateTime,
   formatOdd,
-  getOutcomeKeys,
   isValidOdd,
   type MatchWithScores,
   type OddsKey,
 } from '@/lib/match'
-
-type OddsSearchDashboardProps = {
-  candidates: MatchWithScores[]
-}
 
 const MIN_TOLERANCE = 0
 const MAX_TOLERANCE = 5
 const TOLERANCE_STEP = 0.1
 const DEFAULT_TOLERANCE = 4
 const ALL_OPTION = 'Tümü'
+const PAGE_SIZE = 50
 
 const ODDS_LABELS: Record<OddsKey, string> = {
   ms_1: 'MS 1',
@@ -65,11 +61,16 @@ const parseInputValue = (value: string) => {
   return parsed
 }
 
-export default function OddsSearchDashboard({ candidates }: OddsSearchDashboardProps) {
+export default function OddsSearchDashboard() {
   const [oddsInputs, setOddsInputs] = useState<Record<OddsKey, string>>(buildInitialInputs)
   const [tolerancePercent, setTolerancePercent] = useState(DEFAULT_TOLERANCE)
   const [selectedLeague, setSelectedLeague] = useState(ALL_OPTION)
   const [selectedSeason, setSelectedSeason] = useState(ALL_OPTION)
+  const [matches, setMatches] = useState<MatchWithScores[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(0)
+  const [isLoading, setIsLoading] = useState(false)
 
   const parsedInputs = useMemo(() => {
     const parsed: Partial<Record<OddsKey, number>> = {}
@@ -85,59 +86,65 @@ export default function OddsSearchDashboard({ candidates }: OddsSearchDashboardP
     [parsedInputs]
   )
 
+  const fetchMatches = useCallback(async (currentPage: number) => {
+    if (selectedFields.length === 0) {
+      setMatches([])
+      setTotal(0)
+      setTotalPages(0)
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('page', String(currentPage))
+      params.set('limit', String(PAGE_SIZE))
+      params.set('tolerance', String(tolerancePercent / 100))
+
+      for (const field of selectedFields) {
+        const value = parsedInputs[field]
+        if (value !== undefined) {
+          params.set(field, String(value))
+        }
+      }
+
+      if (selectedLeague !== ALL_OPTION) params.set('league', selectedLeague)
+      if (selectedSeason !== ALL_OPTION) params.set('season', selectedSeason)
+
+      const res = await fetch(`/api/matches/search?${params.toString()}`)
+      const data = await res.json()
+
+      setMatches(data.matches ?? [])
+      setTotal(data.total ?? 0)
+      setTotalPages(data.totalPages ?? 0)
+    } catch {
+      setMatches([])
+      setTotal(0)
+      setTotalPages(0)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [selectedFields, parsedInputs, tolerancePercent, selectedLeague, selectedSeason])
+
+  // Debounced search
+  useEffect(() => {
+    setPage(1)
+    const timer = setTimeout(() => {
+      fetchMatches(1)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [fetchMatches])
+
+  // Page change (no debounce)
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage)
+    fetchMatches(newPage)
+  }
+
   const displayGroups = ODDS_CATEGORIES
   const displayFields = ODDS_FIELDS
 
-  const matchesByOdds = useMemo(() => {
-    if (selectedFields.length === 0) return []
-    const toleranceValue = tolerancePercent / 100
-    const toleranceAbs = toleranceValue
-    const tolerancePct = toleranceValue
-
-    return candidates.filter((candidate) =>
-      selectedFields.every((field) => {
-        const targetValue = parsedInputs[field]
-        const candidateValue = candidate[field]
-        if (targetValue === undefined || !isValidOdd(candidateValue)) return false
-        return areOddsSimilar(targetValue, candidateValue, toleranceAbs, tolerancePct)
-      })
-    )
-  }, [candidates, parsedInputs, selectedFields, tolerancePercent])
-
-  const leagueOptions = useMemo(() => {
-    const unique = new Set<string>()
-    matchesByOdds.forEach((match) => {
-      if (match.league) unique.add(match.league)
-    })
-    return [ALL_OPTION, ...Array.from(unique).sort()]
-  }, [matchesByOdds])
-
-  const seasonOptions = useMemo(() => {
-    const unique = new Set<string>()
-    matchesByOdds.forEach((match) => {
-      if (match.season) unique.add(match.season)
-    })
-    return [ALL_OPTION, ...Array.from(unique).sort().reverse()]
-  }, [matchesByOdds])
-
-  useEffect(() => {
-    if (!leagueOptions.includes(selectedLeague)) setSelectedLeague(ALL_OPTION)
-  }, [leagueOptions, selectedLeague])
-
-  useEffect(() => {
-    if (!seasonOptions.includes(selectedSeason)) setSelectedSeason(ALL_OPTION)
-  }, [seasonOptions, selectedSeason])
-
-  const filteredMatches = useMemo(
-    () =>
-      matchesByOdds.filter((match) => {
-        const leagueMatch = selectedLeague === ALL_OPTION || match.league === selectedLeague
-        const seasonMatch = selectedSeason === ALL_OPTION || match.season === selectedSeason
-        return leagueMatch && seasonMatch
-      }),
-    [matchesByOdds, selectedLeague, selectedSeason]
-  )
-
+  // Compute result stats from current page matches
   const resultStats = useMemo(() => {
     const groupTotals = new Map<string, number>()
     const groupCounts = new Map<string, Map<OddsKey, number>>()
@@ -147,7 +154,7 @@ export default function OddsSearchDashboard({ candidates }: OddsSearchDashboardP
       groupCounts.set(group.id, new Map(group.fields.map((field) => [field, 0])))
     })
 
-    filteredMatches.forEach((match) => {
+    matches.forEach((match) => {
       const outcomeKeys = getOutcomeKeys(match)
       ODDS_CATEGORIES.forEach((group) => {
         const hits = group.fields.filter((field) => outcomeKeys.has(field))
@@ -162,21 +169,21 @@ export default function OddsSearchDashboard({ candidates }: OddsSearchDashboardP
     })
 
     return ODDS_CATEGORIES.map((group) => {
-      const total = groupTotals.get(group.id) ?? 0
+      const groupTotal = groupTotals.get(group.id) ?? 0
       const counts = groupCounts.get(group.id) ?? new Map()
       return {
         id: group.id,
         label: group.label,
-        total,
-        missing: Math.max(filteredMatches.length - total, 0),
+        total: groupTotal,
+        missing: Math.max(matches.length - groupTotal, 0),
         items: group.fields.map((field) => {
           const count = counts.get(field) ?? 0
-          const percent = total > 0 ? Math.round((count / total) * 100) : 0
+          const percent = groupTotal > 0 ? Math.round((count / groupTotal) * 100) : 0
           return { key: field, label: ODDS_LABELS[field], count, percent }
         }),
       }
     })
-  }, [filteredMatches])
+  }, [matches])
 
   const resetInputs = () => {
     setOddsInputs(buildInitialInputs())
@@ -236,7 +243,7 @@ export default function OddsSearchDashboard({ candidates }: OddsSearchDashboardP
           <div className="rounded-xl border border-gray-100 bg-white p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-700">Arama Ayarları</h3>
-              <span className="text-[11px] text-gray-400">{filteredMatches.length} maç</span>
+              <span className="text-[11px] text-gray-400">{total} maç</span>
             </div>
 
             <div className="space-y-5">
@@ -263,31 +270,27 @@ export default function OddsSearchDashboard({ candidates }: OddsSearchDashboardP
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-xs text-gray-500">
                   Lig
-                  <select
-                    value={selectedLeague}
-                    onChange={(event) => setSelectedLeague(event.target.value)}
+                  <input
+                    type="text"
+                    placeholder="Lig adı"
+                    value={selectedLeague === ALL_OPTION ? '' : selectedLeague}
+                    onChange={(event) =>
+                      setSelectedLeague(event.target.value.trim() || ALL_OPTION)
+                    }
                     className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
-                  >
-                    {leagueOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
                 <label className="text-xs text-gray-500">
                   Sezon
-                  <select
-                    value={selectedSeason}
-                    onChange={(event) => setSelectedSeason(event.target.value)}
+                  <input
+                    type="text"
+                    placeholder="Örn: 2024/2025"
+                    value={selectedSeason === ALL_OPTION ? '' : selectedSeason}
+                    onChange={(event) =>
+                      setSelectedSeason(event.target.value.trim() || ALL_OPTION)
+                    }
                     className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
-                  >
-                    {seasonOptions.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
               </div>
             </div>
@@ -303,7 +306,7 @@ export default function OddsSearchDashboard({ candidates }: OddsSearchDashboardP
                 <div>En az bir oran girerek arama yapabilirsiniz.</div>
               ) : (
                 <div>
-                  {matchesByOdds.length} maç bulundu, filtre sonrası {filteredMatches.length} maç görünüyor.
+                  {total} maç bulundu (sayfa {page}/{totalPages || 1})
                 </div>
               )}
               <div>
@@ -315,9 +318,9 @@ export default function OddsSearchDashboard({ candidates }: OddsSearchDashboardP
           <div className="rounded-xl border border-gray-100 bg-white p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-700">Sonuç Dağılımları</h3>
-              <span className="text-[11px] text-gray-400">{filteredMatches.length} maç</span>
+              <span className="text-[11px] text-gray-400">{matches.length} maç</span>
             </div>
-            {filteredMatches.length === 0 ? (
+            {matches.length === 0 ? (
               <div className="text-xs text-gray-400">Gösterilecek veri bulunamadı.</div>
             ) : (
               <div className="space-y-4">
@@ -357,7 +360,7 @@ export default function OddsSearchDashboard({ candidates }: OddsSearchDashboardP
               </div>
             )}
             <div className="mt-3 text-[10px] text-gray-400">
-              Yüzdeler, kategori bazında hesaplanır.
+              Yüzdeler, mevcut sayfa bazında hesaplanır.
             </div>
           </div>
         </aside>
@@ -368,84 +371,115 @@ export default function OddsSearchDashboard({ candidates }: OddsSearchDashboardP
               <h2 className="text-sm font-semibold text-gray-700">Eşleşen Maçlar</h2>
               <div className="text-[11px] text-gray-400">Tutan oranlar yeşil renkle işaretlidir.</div>
             </div>
-            <span className="text-xs text-gray-500">{filteredMatches.length} eşleşme</span>
+            <span className="text-xs text-gray-500">{total} eşleşme</span>
           </div>
 
-          {selectedFields.length === 0 ? (
+          {isLoading ? (
+            <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500 text-center">
+              Yükleniyor...
+            </div>
+          ) : selectedFields.length === 0 ? (
             <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500">
               Arama yapmak için en az bir oran girmeniz gerekiyor.
             </div>
-          ) : filteredMatches.length === 0 ? (
+          ) : matches.length === 0 ? (
             <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500">
               Seçili tolerans ve filtrelerde eşleşen maç bulunamadı.
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
-              <table className="min-w-full text-xs">
-                <thead className="bg-gray-50 text-gray-500">
-                  <tr>
-                    <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Maç</th>
-                    <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Tarih</th>
-                    <th rowSpan={2} className="px-3 py-3 text-center font-semibold">Skor</th>
-                    {displayGroups.map((group) => (
-                      <th
-                        key={group.id}
-                        colSpan={group.fields.length}
-                        className="px-3 py-2 text-center font-semibold"
-                      >
-                        {group.label}
-                      </th>
-                    ))}
-                  </tr>
-                  <tr>
-                    {displayFields.map((field) => (
-                      <th key={field} className="px-3 py-2 text-center font-semibold">
-                        {ODDS_LABELS[field]}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-gray-700">
-                  {filteredMatches.map((match) => {
-                    const outcomeKeys = getOutcomeKeys(match)
-                    return (
-                      <tr key={match.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-3">
-                          <div className="font-semibold text-gray-900">
-                            {match.home_team} vs {match.away_team}
-                          </div>
-                          <div className="text-[10px] text-gray-400">{match.league}</div>
-                        </td>
-                        <td className="px-3 py-3" suppressHydrationWarning>
-                          {formatMatchDateTime(match.match_date, { includeYear: true })}
-                        </td>
-                        <td className="px-3 py-3 text-center">
-                          <div>{match.score_ft ?? '-'}</div>
-                          {match.score_ht ? (
-                            <div className="text-[10px] text-gray-400">İY: {match.score_ht}</div>
-                          ) : null}
-                        </td>
-                        {displayFields.map((field) => {
-                          const isHit = outcomeKeys.has(field)
-                          return (
-                            <td
-                              key={`${match.id}-${field}`}
-                              className={`px-3 py-3 text-center font-mono border ${
-                                isHit
-                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                  : 'border-gray-100'
-                              }`}
-                            >
-                              {formatOdd(match[field])}
-                            </td>
-                          )
-                        })}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-gray-50 text-gray-500">
+                    <tr>
+                      <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Maç</th>
+                      <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Tarih</th>
+                      <th rowSpan={2} className="px-3 py-3 text-center font-semibold">Skor</th>
+                      {displayGroups.map((group) => (
+                        <th
+                          key={group.id}
+                          colSpan={group.fields.length}
+                          className="px-3 py-2 text-center font-semibold"
+                        >
+                          {group.label}
+                        </th>
+                      ))}
+                    </tr>
+                    <tr>
+                      {displayFields.map((field) => (
+                        <th key={field} className="px-3 py-2 text-center font-semibold">
+                          {ODDS_LABELS[field]}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-gray-700">
+                    {matches.map((match) => {
+                      const outcomeKeys = getOutcomeKeys(match)
+                      return (
+                        <tr key={match.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-3">
+                            <div className="font-semibold text-gray-900">
+                              {match.home_team} vs {match.away_team}
+                            </div>
+                            <div className="text-[10px] text-gray-400">{match.league}</div>
+                          </td>
+                          <td className="px-3 py-3" suppressHydrationWarning>
+                            {formatMatchDateTime(match.match_date, { includeYear: true })}
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            <div>{match.score_ft ?? '-'}</div>
+                            {match.score_ht ? (
+                              <div className="text-[10px] text-gray-400">İY: {match.score_ht}</div>
+                            ) : null}
+                          </td>
+                          {displayFields.map((field) => {
+                            const outcomeHit = outcomeKeys.has(field)
+                            return (
+                              <td
+                                key={`${match.id}-${field}`}
+                                className={`px-3 py-3 text-center font-mono border ${
+                                  outcomeHit
+                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                    : 'border-gray-100'
+                                }`}
+                              >
+                                {formatOdd(match[field])}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-3 mt-4">
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => handlePageChange(page - 1)}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40"
+                  >
+                    Önceki
+                  </button>
+                  <span className="text-xs text-gray-500">
+                    {page} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={page >= totalPages}
+                    onClick={() => handlePageChange(page + 1)}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40"
+                  >
+                    Sonraki
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>
