@@ -41,12 +41,50 @@ function buildOrFilter(fixture: MatchWithScores, categories: typeof PERFECT_MATC
   return parts
 }
 
+const VALID_CATEGORY_IDS = new Set(PERFECT_MATCH_CATEGORIES.map((c) => c.id))
+const MAX_FIXTURE_IDS = 50
+const MAX_STRING_LENGTH = 100
+
 export async function POST(request: Request) {
-  const body = await request.json()
-  const fixtureIds: number[] = body.fixtureIds ?? []
-  const categoryIdsParam: string[] = body.categories ?? PERFECT_MATCH_CATEGORIES.map((c) => c.id)
-  const league: string | undefined = body.league
-  const season: string | undefined = body.season
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
+
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Request body must be an object' }, { status: 400 })
+  }
+
+  const raw = body as Record<string, unknown>
+
+  // Validate fixtureIds
+  const fixtureIds: number[] = Array.isArray(raw.fixtureIds) ? raw.fixtureIds : []
+  if (!fixtureIds.every((id) => typeof id === 'number' && Number.isFinite(id))) {
+    return NextResponse.json({ error: 'fixtureIds must be an array of numbers' }, { status: 400 })
+  }
+  if (fixtureIds.length > MAX_FIXTURE_IDS) {
+    return NextResponse.json({ error: `fixtureIds max ${MAX_FIXTURE_IDS} elements` }, { status: 400 })
+  }
+
+  // Validate categories
+  const categoryIdsParam: string[] = Array.isArray(raw.categories)
+    ? raw.categories
+    : PERFECT_MATCH_CATEGORIES.map((c) => c.id)
+  if (!categoryIdsParam.every((c) => typeof c === 'string' && VALID_CATEGORY_IDS.has(c))) {
+    return NextResponse.json({ error: 'Invalid category id' }, { status: 400 })
+  }
+
+  // Validate league & season
+  const league: string | undefined = typeof raw.league === 'string' ? raw.league : undefined
+  const season: string | undefined = typeof raw.season === 'string' ? raw.season : undefined
+  if (league && league.length > MAX_STRING_LENGTH) {
+    return NextResponse.json({ error: 'league too long' }, { status: 400 })
+  }
+  if (season && season.length > MAX_STRING_LENGTH) {
+    return NextResponse.json({ error: 'season too long' }, { status: 400 })
+  }
 
   if (fixtureIds.length === 0) {
     return NextResponse.json({ counts: {} })

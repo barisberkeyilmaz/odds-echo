@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     .range(from, from + limit - 1)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'Maçlar alınamadı' }, { status: 500 })
   }
 
   const total = count ?? 0

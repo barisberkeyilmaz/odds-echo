@@ -156,19 +156,34 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
             return
         }
 
+        const CHUNK_SIZE = 50
+        const chunks: number[][] = []
+        for (let i = 0; i < fixtureIds.length; i += CHUNK_SIZE) {
+            chunks.push(fixtureIds.slice(i, i + CHUNK_SIZE))
+        }
+
         setCountsLoading(true)
-        fetch('/api/matches/perfect/counts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                fixtureIds,
-                categories: selectedCategoryIds,
-                ...(selectedLeague !== ALL_OPTION && { league: selectedLeague }),
-                ...(selectedSeason !== ALL_OPTION && { season: selectedSeason }),
-            }),
-        })
-            .then((res) => res.json())
-            .then((data) => setPerfectCounts(data.counts ?? {}))
+        Promise.all(
+            chunks.map((chunk) =>
+                fetch('/api/matches/perfect/counts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fixtureIds: chunk,
+                        categories: selectedCategoryIds,
+                        ...(selectedLeague !== ALL_OPTION && { league: selectedLeague }),
+                        ...(selectedSeason !== ALL_OPTION && { season: selectedSeason }),
+                    }),
+                }).then((res) => res.json())
+            )
+        )
+            .then((results) => {
+                const merged: Record<number, { total: number; matchedCategories: string[] }> = {}
+                for (const data of results) {
+                    Object.assign(merged, data.counts ?? {})
+                }
+                setPerfectCounts(merged)
+            })
             .catch(() => setPerfectCounts({}))
             .finally(() => setCountsLoading(false))
     }, [fixtures, selectedCategoryIds, selectedLeague, selectedSeason])

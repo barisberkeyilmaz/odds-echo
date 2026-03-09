@@ -8,3 +8,5 @@ scraper_data/
 .vscode/
 scraper.log
 scraper.log.*
+.env.local
+.env*.local
