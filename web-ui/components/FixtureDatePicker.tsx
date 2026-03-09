@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 type FixtureDatePickerProps = {
@@ -13,13 +13,20 @@ const toDateKey = (date: Date) =>
 
 const fromDateKey = (dateKey: string) => new Date(`${dateKey}T00:00:00`)
 
-const formatDateLabel = (dateKey: string) =>
-  fromDateKey(dateKey).toLocaleDateString('tr-TR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
+const addDays = (dateKey: string, offset: number) => {
+  const d = fromDateKey(dateKey)
+  d.setDate(d.getDate() + offset)
+  return toDateKey(d)
+}
+
+const formatShortDay = (dateKey: string) =>
+  fromDateKey(dateKey).toLocaleDateString('tr-TR', { weekday: 'short' })
+
+const formatDayNum = (dateKey: string) =>
+  fromDateKey(dateKey).getDate()
+
+const formatMonthShort = (dateKey: string) =>
+  fromDateKey(dateKey).toLocaleDateString('tr-TR', { month: 'short' })
 
 const TR_DAY_NAMES = ['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz']
 const TR_MONTH_NAMES = [
@@ -45,24 +52,21 @@ function InlineCalendar({
   const calendarDays = useMemo(() => {
     const firstDay = new Date(viewYear, viewMonth, 1)
     const lastDay = new Date(viewYear, viewMonth + 1, 0)
-    const startOffset = (firstDay.getDay() + 6) % 7 // Monday-start
+    const startOffset = (firstDay.getDay() + 6) % 7
     const totalDays = lastDay.getDate()
 
     const days: { date: Date; dateKey: string; isCurrentMonth: boolean }[] = []
 
-    // Previous month days
     for (let i = startOffset - 1; i >= 0; i--) {
       const d = new Date(viewYear, viewMonth, -i)
       days.push({ date: d, dateKey: toDateKey(d), isCurrentMonth: false })
     }
 
-    // Current month days
     for (let i = 1; i <= totalDays; i++) {
       const d = new Date(viewYear, viewMonth, i)
       days.push({ date: d, dateKey: toDateKey(d), isCurrentMonth: true })
     }
 
-    // Fill remaining cells to complete 6 rows
     const remaining = 42 - days.length
     for (let i = 1; i <= remaining; i++) {
       const d = new Date(viewYear, viewMonth + 1, i)
@@ -73,57 +77,38 @@ function InlineCalendar({
   }, [viewMonth, viewYear])
 
   const goToPrevMonth = () => {
-    if (viewMonth === 0) {
-      setViewMonth(11)
-      setViewYear(viewYear - 1)
-    } else {
-      setViewMonth(viewMonth - 1)
-    }
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1) }
+    else setViewMonth(viewMonth - 1)
   }
 
   const goToNextMonth = () => {
-    if (viewMonth === 11) {
-      setViewMonth(0)
-      setViewYear(viewYear + 1)
-    } else {
-      setViewMonth(viewMonth + 1)
-    }
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1) }
+    else setViewMonth(viewMonth + 1)
   }
 
   return (
-    <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl p-3 w-full max-w-[320px]">
-      {/* Month navigation */}
+    <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl p-3 w-[280px] shadow-lg shadow-black/30">
       <div className="flex items-center justify-between mb-3">
-        <button
-          type="button"
-          onClick={goToPrevMonth}
-          className="w-8 h-8 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-        >
+        <button type="button" onClick={goToPrevMonth} className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors text-xs">
           ←
         </button>
-        <span className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">
+        <span className="text-xs font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">
           {TR_MONTH_NAMES[viewMonth]} {viewYear}
         </span>
-        <button
-          type="button"
-          onClick={goToNextMonth}
-          className="w-8 h-8 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-        >
+        <button type="button" onClick={goToNextMonth} className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors text-xs">
           →
         </button>
       </div>
 
-      {/* Day names */}
       <div className="grid grid-cols-7 mb-1">
         {TR_DAY_NAMES.map((name) => (
-          <div key={name} className="text-center text-[10px] font-medium text-[var(--text-muted)] py-1">
+          <div key={name} className="text-center text-[9px] font-medium text-[var(--text-muted)] py-0.5">
             {name}
           </div>
         ))}
       </div>
 
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-7 gap-0.5">
         {calendarDays.map((day) => {
           const isSelected = day.dateKey === selectedDateKey
           const isToday = day.dateKey === todayKey
@@ -135,7 +120,7 @@ function InlineCalendar({
               type="button"
               onClick={() => onSelect(day.dateKey)}
               className={`
-                relative w-full aspect-square flex items-center justify-center text-xs font-medium rounded-lg transition-colors
+                relative w-full aspect-square flex items-center justify-center text-[11px] font-medium rounded-md transition-colors
                 ${isSelected
                   ? 'bg-[var(--accent-blue)] text-white'
                   : isToday
@@ -148,7 +133,7 @@ function InlineCalendar({
             >
               {day.date.getDate()}
               {isAvailable && (
-                <span className="absolute bottom-[3px] left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--accent-win)]" />
+                <span className="absolute bottom-[2px] left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[var(--accent-win)]" />
               )}
             </button>
           )
@@ -163,52 +148,142 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const availableSet = useMemo(() => new Set(availableDateKeys), [availableDateKeys])
-  const selectedDate = useMemo(() => fromDateKey(selectedDateKey), [selectedDateKey])
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  const calendarRef = useRef<HTMLDivElement>(null)
 
-  const previousDateKey = toDateKey(
-    new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() - 1)
-  )
-  const nextDateKey = toDateKey(
-    new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() + 1)
-  )
+  const todayKey = toDateKey(new Date())
+
+  // 5-day strip centered on selected date
+  const stripDays = useMemo(() => {
+    return [-2, -1, 0, 1, 2].map((offset) => addDays(selectedDateKey, offset))
+  }, [selectedDateKey])
 
   const goToDateKey = (dateKey: string) => {
     const params = new URLSearchParams(searchParams?.toString())
     params.set('date', dateKey)
     router.push(`${pathname}?${params.toString()}`)
+    setCalendarOpen(false)
   }
 
+  // Close calendar on outside click
+  useEffect(() => {
+    if (!calendarOpen) return
+    const handler = (e: MouseEvent) => {
+      if (calendarRef.current && !calendarRef.current.contains(e.target as Node)) {
+        setCalendarOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [calendarOpen])
+
   return (
-    <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 mb-6 card-glow">
-      <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center justify-between">
-        <div>
-          <div className="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">Seçili gün</div>
-          <div className="text-lg font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)] mt-1">
-            {formatDateLabel(selectedDateKey)}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2 text-sm">
-            <button
-              type="button"
-              onClick={() => goToDateKey(previousDateKey)}
-              className="px-3 py-2 rounded-md border border-[var(--border-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              ← Önceki gün
-            </button>
-            <button
-              type="button"
-              onClick={() => goToDateKey(nextDateKey)}
-              className="px-3 py-2 rounded-md border border-[var(--border-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              Sonraki gün →
-            </button>
-          </div>
+    <div className="relative z-30 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] px-3 py-2.5 mb-6 card-glow">
+      <div className="flex items-center gap-2">
+        {/* Prev button */}
+        <button
+          type="button"
+          onClick={() => goToDateKey(addDays(selectedDateKey, -1))}
+          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+          title="Önceki gün"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+
+        {/* 5-day strip */}
+        <div className="flex-1 flex items-center justify-center gap-1">
+          {stripDays.map((dateKey) => {
+            const isSelected = dateKey === selectedDateKey
+            const isToday = dateKey === todayKey
+            const isAvailable = availableSet.has(dateKey)
+
+            return (
+              <button
+                key={dateKey}
+                type="button"
+                onClick={() => goToDateKey(dateKey)}
+                className={`
+                  relative flex flex-col items-center px-3 py-1.5 rounded-lg transition-colors min-w-[52px]
+                  ${isSelected
+                    ? 'bg-[var(--accent-blue)] text-white'
+                    : isToday
+                      ? 'ring-1 ring-[var(--accent-blue)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+                  }
+                `}
+              >
+                <span className={`text-[10px] font-medium ${isSelected ? 'text-white/70' : 'text-[var(--text-muted)]'}`}>
+                  {formatShortDay(dateKey)}
+                </span>
+                <span className="text-sm font-bold font-mono leading-tight">
+                  {formatDayNum(dateKey)}
+                </span>
+                <span className={`text-[9px] ${isSelected ? 'text-white/60' : 'text-[var(--text-muted)]'}`}>
+                  {formatMonthShort(dateKey)}
+                </span>
+                {isAvailable && !isSelected && (
+                  <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--accent-win)]" />
+                )}
+              </button>
+            )
+          })}
         </div>
 
-        <InlineCalendar
-          selectedDateKey={selectedDateKey}
-          availableSet={availableSet}
-          onSelect={goToDateKey}
-        />
+        {/* Today button */}
+        <button
+          type="button"
+          onClick={() => goToDateKey(todayKey)}
+          disabled={selectedDateKey === todayKey}
+          className="shrink-0 px-2.5 py-1.5 rounded-md text-[10px] font-semibold border border-[var(--border-primary)] text-[var(--accent-blue)] hover:bg-[var(--accent-blue-bg)] disabled:opacity-30 disabled:cursor-default transition-colors"
+          title="Bugüne git"
+        >
+          Bugün
+        </button>
+
+        {/* Next button */}
+        <button
+          type="button"
+          onClick={() => goToDateKey(addDays(selectedDateKey, 1))}
+          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+          title="Sonraki gün"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+
+        {/* Calendar toggle */}
+        <div className="relative" ref={calendarRef}>
+          <button
+            type="button"
+            onClick={() => setCalendarOpen(!calendarOpen)}
+            className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+              calendarOpen
+                ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)]'
+                : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+            }`}
+            title="Takvim"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+          </button>
+
+          {calendarOpen && (
+            <div className="absolute right-0 top-full mt-2 z-50">
+              <InlineCalendar
+                selectedDateKey={selectedDateKey}
+                availableSet={availableSet}
+                onSelect={goToDateKey}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

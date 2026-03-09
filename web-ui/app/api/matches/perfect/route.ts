@@ -19,6 +19,30 @@ const PERFECT_MATCH_CATEGORIES: { id: string; fields: OddsKey[] }[] = [
   { id: 'tg', fields: ['tg_0_1', 'tg_2_3', 'tg_4_5', 'tg_6_plus'] },
 ]
 
+/**
+ * Build a PostgREST OR filter string.
+ * Each category becomes an AND group; categories are OR'd together.
+ * e.g. "and(ms_1.eq.2.50,ms_x.eq.3.20,ms_2.eq.2.80),and(au_25_alt.eq.1.55,au_25_ust.eq.2.40)"
+ */
+function buildOrFilter(fixture: MatchWithScores, categories: typeof PERFECT_MATCH_CATEGORIES) {
+  const parts: string[] = []
+
+  for (const category of categories) {
+    const conditions: string[] = []
+    for (const field of category.fields) {
+      const value = fixture[field]
+      if (isValidOdd(value)) {
+        conditions.push(`${field}.eq.${value}`)
+      }
+    }
+    if (conditions.length > 0) {
+      parts.push(conditions.length === 1 ? conditions[0] : `and(${conditions.join(',')})`)
+    }
+  }
+
+  return parts
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const fixtureId = Number(url.searchParams.get('fixtureId') ?? '0')
@@ -26,7 +50,7 @@ export async function GET(request: Request) {
   const league = url.searchParams.get('league')
   const season = url.searchParams.get('season')
   const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'))
-  const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit') ?? '50')))
+  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') ?? '100')))
 
   if (!fixtureId) {
     return NextResponse.json({ error: 'fixtureId required' }, { status: 400 })
@@ -50,31 +74,27 @@ export async function GET(request: Request) {
     ? categoryIdsParam.split(',').filter(Boolean)
     : PERFECT_MATCH_CATEGORIES.map((c) => c.id)
 
-  const selectedCategories = PERFECT_MATCH_CATEGORIES.filter(
-    (c) =>
-      selectedCategoryIds.includes(c.id) &&
-      c.fields.some((field) => isValidOdd(fixture[field]))
+  const requestedCategories = PERFECT_MATCH_CATEGORIES.filter(
+    (c) => selectedCategoryIds.includes(c.id)
   )
 
-  if (selectedCategories.length === 0) {
+  // Build OR filter: match on ANY category (not ALL)
+  const orParts = buildOrFilter(fixture, requestedCategories)
+
+  if (orParts.length === 0) {
     return NextResponse.json({ matches: [], total: 0, page, limit, totalPages: 0 })
   }
 
-  // Build exact-match query for all selected categories
+  // Exclude matches from the same day as the fixture (prevent self-matching)
+  const fixtureDate = fixture.match_date?.split('T')[0] ?? ''
+
   let query = supabase
     .from('matches')
     .select(MATCH_SELECT, { count: 'exact' })
     .not('score_ft', 'is', null)
     .neq('id', fixtureId)
-
-  for (const category of selectedCategories) {
-    for (const field of category.fields) {
-      const value = fixture[field]
-      if (isValidOdd(value)) {
-        query = query.eq(field, value)
-      }
-    }
-  }
+    .lt('match_date', `${fixtureDate}T00:00:00`)
+    .or(orParts.join(','))
 
   if (league) {
     query = query.eq('league', league)

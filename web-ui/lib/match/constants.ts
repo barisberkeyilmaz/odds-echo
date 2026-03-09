@@ -68,9 +68,14 @@ export const ODDS_CATEGORIES: OddsCategory[] = [
     ],
   },
   {
-    id: 'au',
-    label: '1.5 & 2.5 Alt/Üst',
-    fields: ['au_15_alt', 'au_15_ust', 'au_25_alt', 'au_25_ust'],
+    id: 'au15',
+    label: '1.5 Alt/Üst',
+    fields: ['au_15_alt', 'au_15_ust'],
+  },
+  {
+    id: 'au25',
+    label: '2.5 Alt/Üst',
+    fields: ['au_25_alt', 'au_25_ust'],
   },
   {
     id: 'kg',

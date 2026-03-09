@@ -104,7 +104,7 @@ export default async function PerfectMatchPage({
 
     return (
         <main className="min-h-screen bg-grid">
-            <Header totalMatches={fixtures.length} />
+            <Header />
             <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 stagger">
 
                 <div className="mb-6">

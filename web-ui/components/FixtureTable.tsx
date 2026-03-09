@@ -147,7 +147,16 @@ export default function FixtureTable({ matches }: FixtureTableProps) {
 
           {/* Matches table */}
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm whitespace-nowrap">
+            <table className="min-w-full text-sm whitespace-nowrap table-fixed">
+              <colgroup>
+                <col className="w-[70px]" />
+                <col />
+                <col className="w-[110px]" />
+                <col className="w-[72px]" />
+                <col className="w-[72px]" />
+                <col className="w-[72px]" />
+                <col className="w-[80px]" />
+              </colgroup>
               <thead className="text-xs uppercase tracking-wider text-[var(--text-tertiary)] border-b border-[var(--border-subtle)]">
                 <tr>
                   <th className="px-3 py-2 text-left font-medium">Saat</th>
@@ -175,7 +184,7 @@ export default function FixtureTable({ matches }: FixtureTableProps) {
                       <td className="px-3 py-2 text-[var(--text-secondary)] font-mono text-xs" suppressHydrationWarning>
                         {formatMatchTime(match.match_date)}
                       </td>
-                      <td className="px-3 py-2 text-[var(--text-primary)] font-semibold">
+                      <td className="px-3 py-2 text-[var(--text-primary)] font-semibold truncate" title={`${match.home_team} vs ${match.away_team}`}>
                         {match.home_team} vs {match.away_team}
                       </td>
                       <td className="px-3 py-2 text-center text-xs text-[var(--text-tertiary)] font-mono">

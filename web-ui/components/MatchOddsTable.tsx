@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef } from 'react'
+import Link from 'next/link'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   formatMatchDateTime,
@@ -91,9 +92,9 @@ export const MatchOddsTable = ({
         <td className="px-3 py-2">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="font-semibold text-[var(--text-primary)]">
+              <Link href={`/analysis/${match.id}`} className="font-semibold text-[var(--text-primary)] hover:text-[var(--accent-blue)] transition-colors">
                 {match.home_team} vs {match.away_team}
-              </div>
+              </Link>
               <div className="text-[10px] text-[var(--text-muted)]">{match.league}</div>
             </div>
             <div
@@ -103,8 +104,8 @@ export const MatchOddsTable = ({
               )}`}
             >
               {totalCategories > 0
-                ? `${match.matchCount}/${totalCategories} eşleşme`
-                : `${match.matchCount} eşleşme`}
+                ? `${match.matchCount}/${totalCategories}`
+                : `${match.matchCount}`}
             </div>
           </div>
           {match.matchedCategoryIds.length > 0 ? (

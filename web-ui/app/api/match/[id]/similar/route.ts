@@ -57,24 +57,42 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ totalCategories: 0, matches: [], total: 0, page, limit, totalPages: 0 })
   }
 
-  // DB-side range filtering: use the most selective category (smallest fields count) first
-  // Apply range filters for ALL fields of ALL available categories
   let query = supabase
     .from('matches')
     .select(MATCH_SELECT, { count: 'exact' })
-    .eq('status', 'MS')
     .not('score_ft', 'is', null)
     .neq('id', matchIdNumber)
 
-  // For DB-side filtering, we pick the primary MS category for range filtering
-  // since filtering ALL categories with OR logic isn't possible with simple Supabase queries.
-  // We filter by the first category's range, then do the rest client-side.
-  const primaryCategory = availableCategories[0]
-  for (const field of primaryCategory.fields) {
-    const value = base[field]
-    if (isValidOdd(value) && value !== null) {
-      const toleranceAbs = Math.max(value * toleranceValue, toleranceValue)
-      query = query.gte(field, value - toleranceAbs).lte(field, value + toleranceAbs)
+  if (toleranceValue === 0) {
+    // Exact match: use OR across all categories (same logic as perfect match API)
+    const orParts: string[] = []
+    for (const category of availableCategories) {
+      const conditions: string[] = []
+      for (const field of category.fields) {
+        const value = base[field]
+        if (isValidOdd(value)) {
+          conditions.push(`${field}.eq.${value}`)
+        }
+      }
+      if (conditions.length > 0) {
+        orParts.push(conditions.length === 1 ? conditions[0] : `and(${conditions.join(',')})`)
+      }
+    }
+
+    if (orParts.length === 0) {
+      return NextResponse.json({ totalCategories: availableCategories.length, matches: [], total: 0, page, limit, totalPages: 0 })
+    }
+
+    query = query.or(orParts.join(','))
+  } else {
+    // Tolerance-based: filter by primary category DB-side, rest client-side
+    const primaryCategory = availableCategories[0]
+    for (const field of primaryCategory.fields) {
+      const value = base[field]
+      if (isValidOdd(value) && value !== null) {
+        const toleranceAbs = Math.max(value * toleranceValue, toleranceValue)
+        query = query.gte(field, value - toleranceAbs).lte(field, value + toleranceAbs)
+      }
     }
   }
 
@@ -86,7 +104,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 
   // Fetch more than needed for client-side multi-category matching
-  const fetchLimit = limit * 3
+  const fetchLimit = toleranceValue === 0 ? limit * 2 : limit * 3
   const { data, error, count } = await query
     .order('match_date', { ascending: false })
     .range(0, fetchLimit - 1)
@@ -99,6 +117,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   // Client-side: check all categories and calculate match counts
   const isSimilar = (baseVal: number, candidateVal: number) => {
+    if (toleranceValue === 0) return baseVal === candidateVal
     const diff = Math.abs(baseVal - candidateVal)
     return diff <= toleranceValue || diff <= Math.max(baseVal, candidateVal) * toleranceValue
   }

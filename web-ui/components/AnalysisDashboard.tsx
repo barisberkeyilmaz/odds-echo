@@ -11,6 +11,7 @@ import {
   type OddsKey,
 } from '@/lib/match'
 import { useFilterOptions, groupLeaguesByCountry } from '@/lib/useFilterOptions'
+import SearchableSelect, { type SelectOption } from '@/components/SearchableSelect'
 
 type AnalysisDashboardProps = {
   match: MatchWithScores
@@ -53,6 +54,16 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
   const [totalPages, setTotalPages] = useState(0)
   const [totalCategories, setTotalCategories] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
+
+  const leagueSelectOptions = useMemo<SelectOption[]>(() => {
+    const result: SelectOption[] = []
+    for (const group of groupLeaguesByCountry(leagues)) {
+      for (const league of group.items) {
+        result.push({ value: league.value, label: league.label, group: group.country })
+      }
+    }
+    return result
+  }, [leagues])
 
   const availableCategories = useMemo(
     () =>
@@ -231,7 +242,7 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
       </section>
 
       <section className="mt-6 grid gap-4 lg:grid-cols-[1.3fr_1fr] animate-in">
-        <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 card-glow">
+        <div className="relative z-20 rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 card-glow overflow-visible">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Filtreler</h3>
             <button type="button" onClick={resetFilters} className="text-[11px] text-[var(--accent-blue)] hover:brightness-110">
@@ -241,36 +252,24 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
 
           <div className="space-y-5">
             <div className="grid gap-3 md:grid-cols-2">
-              <label className="text-xs text-[var(--text-tertiary)]">
-                Lig
-                <select
+              <div className="text-xs text-[var(--text-tertiary)]">
+                <span className="block mb-2">Lig</span>
+                <SearchableSelect
+                  options={leagueSelectOptions}
                   value={selectedLeague}
-                  onChange={(event) => setSelectedLeague(event.target.value)}
-                  className="mt-2 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
-                >
-                  <option value={ALL_OPTION}>Tümü</option>
-                  {groupLeaguesByCountry(leagues).map((group) => (
-                    <optgroup key={group.country} label={group.country}>
-                      {group.items.map((league) => (
-                        <option key={league.value} value={league.value}>{league.label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs text-[var(--text-tertiary)]">
-                Sezon
-                <select
+                  onChange={setSelectedLeague}
+                  placeholder="Lig ara..."
+                />
+              </div>
+              <div className="text-xs text-[var(--text-tertiary)]">
+                <span className="block mb-2">Sezon</span>
+                <SearchableSelect
+                  options={seasons.map((s) => ({ value: s, label: s }))}
                   value={selectedSeason}
-                  onChange={(event) => setSelectedSeason(event.target.value)}
-                  className="mt-2 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
-                >
-                  <option value={ALL_OPTION}>Tümü</option>
-                  {seasons.map((season) => (
-                    <option key={season} value={season}>{season}</option>
-                  ))}
-                </select>
-              </label>
+                  onChange={setSelectedSeason}
+                  placeholder="Sezon ara..."
+                />
+              </div>
             </div>
 
             <div>

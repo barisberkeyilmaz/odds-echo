@@ -12,6 +12,7 @@ import {
     type OddsKey,
 } from '@/lib/match'
 import { useFilterOptions, groupLeaguesByCountry } from '@/lib/useFilterOptions'
+import SearchableSelect, { type SelectOption } from '@/components/SearchableSelect'
 
 type PerfectMatchDashboardProps = {
     fixtures: MatchWithScores[]
@@ -42,17 +43,31 @@ const ODDS_LABELS = RESULT_GROUPS.reduce<Record<OddsKey, string>>((acc, group) =
     return acc
 }, {} as Record<OddsKey, string>)
 
-type PerfectMatchResult = MatchWithScores & { matchedCategoryIds: string[] }
-
-type FixtureWithMatches = MatchWithScores & {
-    perfectMatches: PerfectMatchResult[]
-    matchingCategoryCount: number
-    matchedCategoryIds: string[]
-    total: number
-    page: number
-    totalPages: number
-    isLoading: boolean
+/**
+ * Check which selected categories match between a fixture and a historical match.
+ * A category matches if ALL its valid odds fields in the fixture have the same value in the result.
+ */
+function getMatchedCategories(
+    fixture: MatchWithScores,
+    result: MatchWithScores,
+    selectedCategoryIds: string[],
+): string[] {
+    const matched: string[] = []
+    for (const cat of PERFECT_MATCH_CATEGORIES) {
+        if (!selectedCategoryIds.includes(cat.id)) continue
+        const validFields = cat.fields.filter((f) => isValidOdd(fixture[f]))
+        if (validFields.length === 0) continue
+        const allMatch = validFields.every((f) => {
+            const fv = fixture[f]
+            const rv = result[f]
+            return isValidOdd(fv) && isValidOdd(rv) && fv === rv
+        })
+        if (allMatch) matched.push(cat.id)
+    }
+    return matched
 }
+
+type PerfectMatchResult = MatchWithScores & { matchedCategoryIds: string[] }
 
 export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboardProps) {
     const { leagues, seasons } = useFilterOptions()
@@ -63,6 +78,18 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
     const [selectedSeason, setSelectedSeason] = useState(ALL_OPTION)
     const [expandedFixtureId, setExpandedFixtureId] = useState<number | null>(null)
     const [fixtureResults, setFixtureResults] = useState<Map<number, { matches: PerfectMatchResult[]; total: number; page: number; totalPages: number; isLoading: boolean }>>(new Map())
+    const [perfectCounts, setPerfectCounts] = useState<Record<number, { total: number; matchedCategories: string[] }>>({})
+    const [countsLoading, setCountsLoading] = useState(false)
+
+    const leagueSelectOptions = useMemo<SelectOption[]>(() => {
+        const result: SelectOption[] = []
+        for (const group of groupLeaguesByCountry(leagues)) {
+            for (const league of group.items) {
+                result.push({ value: league.value, label: league.label, group: group.country })
+            }
+        }
+        return result
+    }, [leagues])
 
     const fetchPerfectMatches = useCallback(async (fixtureId: number, pageNum: number = 1) => {
         setFixtureResults((prev) => {
@@ -72,22 +99,28 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
             return next
         })
 
+        // Find the fixture to compute matched categories
+        const fixture = fixtures.find((f) => f.id === fixtureId)
+
         try {
             const params = new URLSearchParams()
             params.set('fixtureId', String(fixtureId))
             params.set('categories', selectedCategoryIds.join(','))
             params.set('page', String(pageNum))
-            params.set('limit', '50')
+            params.set('limit', '100')
             if (selectedLeague !== ALL_OPTION) params.set('league', selectedLeague)
             if (selectedSeason !== ALL_OPTION) params.set('season', selectedSeason)
 
             const res = await fetch(`/api/matches/perfect?${params.toString()}`)
             const data = await res.json()
 
-            const matches = (data.matches ?? []).map((m: MatchWithScores) => ({
+            const matches: PerfectMatchResult[] = (data.matches ?? []).map((m: MatchWithScores) => ({
                 ...m,
-                matchedCategoryIds: selectedCategoryIds,
+                matchedCategoryIds: fixture ? getMatchedCategories(fixture, m, selectedCategoryIds) : [],
             }))
+
+            // Sort by number of matched categories (most first)
+            matches.sort((a, b) => b.matchedCategoryIds.length - a.matchedCategoryIds.length)
 
             setFixtureResults((prev) => {
                 const next = new Map(prev)
@@ -101,13 +134,44 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                 return next
             })
         }
-    }, [selectedCategoryIds, selectedLeague, selectedSeason])
+    }, [fixtures, selectedCategoryIds, selectedLeague, selectedSeason])
 
     useEffect(() => {
         if (expandedFixtureId !== null) {
             fetchPerfectMatches(expandedFixtureId, 1)
         }
     }, [expandedFixtureId, fetchPerfectMatches])
+
+    // Fetch perfect match counts for all fixtures when categories/filters change
+    useEffect(() => {
+        const fixtureIds = fixtures
+            .filter((f) => selectedCategoryIds.some((catId) => {
+                const cat = PERFECT_MATCH_CATEGORIES.find((c) => c.id === catId)
+                return cat && cat.fields.some((field) => isValidOdd(f[field]))
+            }))
+            .map((f) => f.id)
+
+        if (fixtureIds.length === 0) {
+            setPerfectCounts({})
+            return
+        }
+
+        setCountsLoading(true)
+        fetch('/api/matches/perfect/counts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                fixtureIds,
+                categories: selectedCategoryIds,
+                ...(selectedLeague !== ALL_OPTION && { league: selectedLeague }),
+                ...(selectedSeason !== ALL_OPTION && { season: selectedSeason }),
+            }),
+        })
+            .then((res) => res.json())
+            .then((data) => setPerfectCounts(data.counts ?? {}))
+            .catch(() => setPerfectCounts({}))
+            .finally(() => setCountsLoading(false))
+    }, [fixtures, selectedCategoryIds, selectedLeague, selectedSeason])
 
     const getResultStats = (matches: MatchWithScores[]) => {
         const groupTotals = new Map<string, number>()
@@ -158,20 +222,19 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
         setSelectedSeason(ALL_OPTION)
         setExpandedFixtureId(null)
         setFixtureResults(new Map())
+        setPerfectCounts({})
     }
 
     const validFixtures = useMemo(() =>
-        fixtures.filter((fixture) =>
-            selectedCategoryIds.some((catId) => {
-                const cat = PERFECT_MATCH_CATEGORIES.find((c) => c.id === catId)
-                return cat && cat.fields.some((field) => isValidOdd(fixture[field]))
-            })
-        ),
-    [fixtures, selectedCategoryIds])
+        fixtures.filter((fixture) => (perfectCounts[fixture.id]?.total ?? 0) > 0),
+    [fixtures, perfectCounts])
+
+    const getCategoryLabel = (catId: string) =>
+        PERFECT_MATCH_CATEGORIES.find((c) => c.id === catId)?.label ?? catId
 
     return (
         <>
-            <section className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 mb-6 card-glow">
+            <section className="relative z-20 rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 mb-6 card-glow overflow-visible">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Filtreler</h3>
                     <button type="button" onClick={resetFilters} className="text-[11px] text-[var(--accent-blue)] hover:brightness-110">
@@ -181,41 +244,30 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
 
                 <div className="space-y-5">
                     <div className="grid gap-3 md:grid-cols-2">
-                        <label className="text-xs text-[var(--text-tertiary)]">
-                            Geçmiş Maç Ligi
-                            <select
+                        <div className="text-xs text-[var(--text-tertiary)]">
+                            <span className="block mb-2">Geçmiş Maç Ligi</span>
+                            <SearchableSelect
+                                options={leagueSelectOptions}
                                 value={selectedLeague}
-                                onChange={(e) => setSelectedLeague(e.target.value)}
-                                className="mt-2 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
-                            >
-                                <option value={ALL_OPTION}>Tümü</option>
-                                {groupLeaguesByCountry(leagues).map((group) => (
-                                    <optgroup key={group.country} label={group.country}>
-                                        {group.items.map((league) => (
-                                            <option key={league.value} value={league.value}>{league.label}</option>
-                                        ))}
-                                    </optgroup>
-                                ))}
-                            </select>
-                        </label>
-                        <label className="text-xs text-[var(--text-tertiary)]">
-                            Geçmiş Maç Sezonu
-                            <select
+                                onChange={setSelectedLeague}
+                                placeholder="Lig ara..."
+                            />
+                        </div>
+                        <div className="text-xs text-[var(--text-tertiary)]">
+                            <span className="block mb-2">Geçmiş Maç Sezonu</span>
+                            <SearchableSelect
+                                options={seasons.map((s) => ({ value: s, label: s }))}
                                 value={selectedSeason}
-                                onChange={(e) => setSelectedSeason(e.target.value)}
-                                className="mt-2 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
-                            >
-                                <option value={ALL_OPTION}>Tümü</option>
-                                {seasons.map((season) => (
-                                    <option key={season} value={season}>{season}</option>
-                                ))}
-                            </select>
-                        </label>
+                                onChange={setSelectedSeason}
+                                placeholder="Sezon ara..."
+                            />
+                        </div>
                     </div>
 
                     <div>
                         <div className="text-xs text-[var(--text-tertiary)] mb-2">
                             Eşleşme Kategorileri ({selectedCategoryIds.length}/{PERFECT_MATCH_CATEGORIES.length} seçili)
+                            <span className="text-[var(--text-muted)] ml-2">— en az biri uyarsa eşleşir</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
                             {PERFECT_MATCH_CATEGORIES.map((category) => {
@@ -240,21 +292,29 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
             </section>
 
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Mükemmel Eşleşmeler</h2>
+                <h2 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Eşleşmeler</h2>
                 <span className="text-xs text-[var(--text-tertiary)] font-mono">
-                    {validFixtures.length} fikstür maçı
+                    {validFixtures.length} / {fixtures.length} maçta eşleşme
                 </span>
             </div>
 
-            {validFixtures.length === 0 ? (
+            {countsLoading ? (
+                <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-8">
+                    <div className="space-y-3">
+                        <div className="skeleton h-4 w-3/4 mx-auto" />
+                        <div className="skeleton h-4 w-1/2 mx-auto" />
+                        <div className="skeleton h-4 w-5/6 mx-auto" />
+                    </div>
+                </div>
+            ) : validFixtures.length === 0 ? (
                 <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-8 text-center">
                     <h3 className="text-lg font-medium text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)] mb-2">
-                        Mükemmel Eşleşme Bulunamadı
+                        Eşleşme Bulunamadı
                     </h3>
                     <p className="text-sm text-[var(--text-tertiary)]">
                         {selectedCategoryIds.length === 0
                             ? 'En az bir kategori seçin.'
-                            : 'Seçili kategorilerde oranı olan maç yok.'}
+                            : 'Seçili kategorilerde eşleşen geçmiş maç bulunamadı.'}
                     </p>
                 </div>
             ) : (
@@ -279,27 +339,32 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                                     {formatMatchDateTime(fixture.match_date)}
                                                 </span>
                                                 <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-tertiary)]">
-                                                    {fixture.league}
+                                                    {fixture.league_display ?? fixture.league}
                                                 </span>
                                             </div>
                                             <div className="font-medium text-[var(--text-primary)]">
                                                 {fixture.home_team} vs {fixture.away_team}
                                             </div>
                                         </div>
-                                        <div className={`text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
-                                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-                                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                                            </svg>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] font-mono font-medium">
+                                                {perfectCounts[fixture.id]?.total ?? 0} eşleşme
+                                            </span>
+                                            <div className={`text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                                                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                </svg>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="flex flex-wrap gap-1.5 mt-3">
-                                        {PERFECT_MATCH_CATEGORIES.filter((c) =>
-                                            selectedCategoryIds.includes(c.id) &&
-                                            c.fields.some((field) => isValidOdd(fixture[field]))
-                                        ).map((category) => (
-                                            <span key={category.id} className="text-[10px] px-2 py-0.5 rounded bg-[var(--accent-win-bg)] text-[var(--accent-win)] font-medium">
-                                                {category.label}
+                                    <div className="flex flex-wrap gap-1.5 mt-2">
+                                        {(perfectCounts[fixture.id]?.matchedCategories ?? []).map((catId) => (
+                                            <span
+                                                key={catId}
+                                                className="text-[10px] px-2 py-0.5 rounded font-medium bg-[var(--accent-win-bg)] text-[var(--accent-win)]"
+                                            >
+                                                {getCategoryLabel(catId)}
                                             </span>
                                         ))}
                                     </div>
@@ -373,16 +438,27 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                                             <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-2">
                                                                 Eşleşen Geçmiş Maçlar
                                                             </h4>
-                                                            <div className="max-h-64 overflow-y-auto space-y-2">
+                                                            <div className="max-h-96 overflow-y-auto space-y-2">
                                                                 {perfectMatches.map((pm) => (
                                                                     <Link key={pm.id} href={`/analysis/${pm.id}`} className="block bg-[var(--bg-secondary)] rounded-lg p-3 border border-[var(--border-primary)] hover:border-[var(--border-accent)] hover:shadow-[var(--glow-blue)] transition-all">
                                                                         <div className="flex items-center justify-between">
-                                                                            <div>
+                                                                            <div className="flex-1 min-w-0">
                                                                                 <div className="text-xs text-[var(--text-muted)] font-mono mb-0.5">{formatMatchDateTime(pm.match_date, { includeYear: true })}</div>
                                                                                 <div className="text-sm font-medium text-[var(--text-primary)]">{pm.home_team} vs {pm.away_team}</div>
                                                                                 <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{pm.league} · {pm.season}</div>
+                                                                                {/* Matched category badges */}
+                                                                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] font-semibold">
+                                                                                        {pm.matchedCategoryIds.length}/{selectedCategoryIds.length} kategori
+                                                                                    </span>
+                                                                                    {pm.matchedCategoryIds.map((catId) => (
+                                                                                        <span key={catId} className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-win-bg)] text-[var(--accent-win)]">
+                                                                                            {getCategoryLabel(catId)}
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </div>
                                                                             </div>
-                                                                            <div className="text-right">
+                                                                            <div className="text-right ml-3 shrink-0">
                                                                                 {pm.score_ft && <div className="text-lg font-bold font-mono text-[var(--text-primary)]">{pm.score_ft}</div>}
                                                                                 {pm.score_ht && <div className="text-[10px] text-[var(--text-muted)] font-mono">İY: {pm.score_ht}</div>}
                                                                             </div>
@@ -419,7 +495,7 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
 
                                                 {perfectMatches.length === 0 && !result?.isLoading && (
                                                     <div className="text-center text-sm text-[var(--text-tertiary)] py-4">
-                                                        Bu maç için mükemmel eşleşme bulunamadı.
+                                                        Bu maç için eşleşme bulunamadı.
                                                     </div>
                                                 )}
                                             </>
