@@ -66,6 +66,7 @@ def run_monitoring_worker(
 
     if include_missing_dates:
         # Also include queue items whose match_code is NOT in matches table
+        logger.info("Checking for missing-date matches...")
         all_non_success = (
             supabase.table("match_queue")
             .select("match_code, match_url, status, retry_count")
@@ -74,23 +75,37 @@ def run_monitoring_worker(
             .execute()
         )
         existing_codes = {item["match_code"] for item in queue}
-        for item in (all_non_success.data or []):
-            mc = item.get("match_code")
-            if mc and mc not in existing_codes:
-                # Check if this match_code has a record in matches
-                if mc not in window_match_codes:
-                    # Check if it exists in matches at all
-                    check = (
-                        supabase.table("matches")
-                        .select("match_code")
-                        .eq("match_code", mc)
-                        .limit(1)
-                        .execute()
-                    )
-                    if not (check.data or []):
-                        missing_date_count += 1
-                        queue.append(item)
-                        existing_codes.add(mc)
+        # Filter candidates that need checking
+        candidates = [
+            item for item in (all_non_success.data or [])
+            if item.get("match_code")
+            and item["match_code"] not in existing_codes
+            and item["match_code"] not in window_match_codes
+        ]
+        logger.info("Found %d candidates to check against matches table", len(candidates))
+        # Batch check: query matches table in chunks instead of one-by-one
+        candidate_codes = [item["match_code"] for item in candidates]
+        codes_in_matches = set()
+        for i in range(0, len(candidate_codes), 200):
+            chunk = candidate_codes[i : i + 200]
+            check_res = (
+                supabase.table("matches")
+                .select("match_code")
+                .in_("match_code", chunk)
+                .execute()
+            )
+            codes_in_matches.update(
+                r["match_code"] for r in (check_res.data or []) if r.get("match_code")
+            )
+            if len(candidate_codes) > 200:
+                logger.info("  Checked %d/%d candidates...", min(i + 200, len(candidate_codes)), len(candidate_codes))
+        # Add only those NOT found in matches table
+        candidate_map = {item["match_code"]: item for item in candidates}
+        for mc in candidate_codes:
+            if mc not in codes_in_matches:
+                missing_date_count += 1
+                queue.append(candidate_map[mc])
+                existing_codes.add(mc)
 
     if not queue:
         logger.info(

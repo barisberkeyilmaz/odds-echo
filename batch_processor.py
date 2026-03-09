@@ -1,6 +1,11 @@
-import time
+import glob
 import os
+import platform
+import shutil
+import subprocess
+import time
 from datetime import datetime, timezone
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -19,10 +24,32 @@ def create_driver():
     return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=opts)
 
 def force_cleanup():
+    """Chrome process ve geçici dosyalarını temizle (cross-platform)."""
     try:
-        os.system("pkill -9 -f chrome")
-        os.system("rm -rf /tmp/.org.chromium.Chromium.*")
-    except Exception: pass
+        if platform.system() == "Windows":
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "chrome.exe", "/T"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "chromedriver.exe", "/T"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            temp_dir = os.environ.get("TEMP", "")
+            for d in glob.glob(os.path.join(temp_dir, "scoped_dir*")):
+                shutil.rmtree(d, ignore_errors=True)
+        else:
+            subprocess.run(
+                ["pkill", "-9", "-f", "chrome"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            for d in glob.glob("/tmp/.org.chromium.Chromium.*"):
+                shutil.rmtree(d, ignore_errors=True)
+    except Exception:
+        pass
 
 def run_worker():
     print("🔄 Worker başlatılıyor... (Supabase limit: 500/döngü)")
