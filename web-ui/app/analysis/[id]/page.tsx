@@ -37,34 +37,34 @@ export default async function AnalysisPage({
   if (!match) notFound()
 
   return (
-    <main className="min-h-screen bg-gray-50 p-3 md:p-5">
-      <div className="max-w-[1400px] mx-auto">
-        <Header />
+    <main className="min-h-screen bg-grid">
+      <Header />
+      <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 stagger">
 
         <div className="mb-6">
-          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700">
+          <Link href="/" className="text-sm text-[var(--accent-blue)] hover:brightness-110 transition-all">
             ← Fikstüre dön
           </Link>
         </div>
 
-        <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <section className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <span className="text-xs font-semibold bg-blue-50 text-blue-600 px-2 py-1 rounded">
+            <span className="text-xs font-semibold bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] px-2 py-1 rounded">
               {match.league}
             </span>
-            <span className="text-xs text-gray-500" suppressHydrationWarning>
+            <span className="text-xs text-[var(--text-tertiary)] font-mono" suppressHydrationWarning>
               {formatMatchDateTime(match.match_date, { includeYear: true })}
             </span>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="text-lg font-bold text-gray-900">
+              <div className="text-lg font-bold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">
                 {match.home_team} vs {match.away_team}
               </div>
-              <div className="text-xs text-gray-400 mt-1">Sezon: {match.season}</div>
+              <div className="text-xs text-[var(--text-muted)] mt-1">Sezon: {match.season}</div>
             </div>
             {match.score_ft ? (
-              <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">
+              <div className="rounded-lg border border-[var(--accent-win)] bg-[var(--accent-win-bg)] px-4 py-2 text-sm text-[var(--accent-win)] font-mono">
                 Skor: {match.score_ft} {match.score_ht ? `(İY: ${match.score_ht})` : ''}
               </div>
             ) : null}

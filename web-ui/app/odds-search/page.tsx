@@ -5,15 +5,15 @@ export const revalidate = 3600
 
 export default function OddsSearchPage() {
   return (
-    <main className="min-h-screen bg-gray-50 p-3 md:p-5">
-      <div className="max-w-[1400px] mx-auto">
-        <Header />
+    <main className="min-h-screen bg-grid">
+      <Header />
+      <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 stagger">
 
-        <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <section className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="text-lg font-bold text-gray-900">Oran Arama</div>
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-lg font-bold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Oran Arama</div>
+              <div className="text-xs text-[var(--text-tertiary)] mt-1">
                 Girilen oranlara göre geçmiş maçları bulun ve sonuçları filtreleyin.
               </div>
             </div>

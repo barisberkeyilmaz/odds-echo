@@ -41,11 +41,11 @@ const SIMILARITY_TOLERANCE_PCT = 0.04
 const MATCH_SELECT = buildMatchSelect(SCORE_FIELDS)
 
 const getBadgeClass = (count: number) => {
-  if (count >= 5) return 'bg-emerald-100 text-emerald-700'
-  if (count === 4) return 'bg-green-100 text-green-700'
-  if (count === 3) return 'bg-yellow-100 text-yellow-700'
-  if (count === 2) return 'bg-orange-100 text-orange-700'
-  return 'bg-gray-100 text-gray-600'
+  if (count >= 5) return 'bg-[var(--accent-win-bg)] text-[var(--accent-win)]'
+  if (count === 4) return 'bg-[var(--accent-win-bg)] text-[var(--accent-win)]'
+  if (count === 3) return 'bg-[var(--accent-draw-bg)] text-[var(--accent-draw)]'
+  if (count === 2) return 'bg-[var(--accent-loss-bg)] text-[var(--accent-loss)]'
+  return 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)]'
 }
 
 async function getFixture(id: number) {
@@ -102,9 +102,9 @@ const oddsGroups: OddsGroup[] = [
     title: 'MS 1/X/2',
     gridClass: 'grid-cols-3',
     items: [
-      { label: 'MS 1', key: 'ms_1', accent: 'text-blue-600' },
-      { label: 'MS X', key: 'ms_x', accent: 'text-gray-700' },
-      { label: 'MS 2', key: 'ms_2', accent: 'text-red-600' },
+      { label: 'MS 1', key: 'ms_1', accent: 'text-[var(--accent-blue)]' },
+      { label: 'MS X', key: 'ms_x', accent: 'text-[var(--text-primary)]' },
+      { label: 'MS 2', key: 'ms_2', accent: 'text-[var(--accent-loss)]' },
     ],
   },
   {
@@ -163,39 +163,39 @@ export default async function MatchDetailPage({ params }: { params: { id: string
   const totalCategories = ODDS_CATEGORIES.length
 
   return (
-    <main className="min-h-screen bg-gray-50 p-3 md:p-5">
-      <div className="max-w-[1400px] mx-auto">
-        <Header />
+    <main className="min-h-screen bg-grid">
+      <Header />
+      <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 stagger">
 
         <div className="mb-6">
-          <Link href="/" className="text-sm text-blue-600 hover:text-blue-700">
+          <Link href="/" className="text-sm text-[var(--accent-blue)] hover:brightness-110 transition-all">
             ← Fikstüre dön
           </Link>
         </div>
 
-        <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <section className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <span className="text-xs font-semibold bg-blue-50 text-blue-600 px-2 py-1 rounded">
+            <span className="text-xs font-semibold bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] px-2 py-1 rounded">
               {fixture.league}
             </span>
-            <span className="text-xs text-gray-500" suppressHydrationWarning>
+            <span className="text-xs text-[var(--text-tertiary)] font-mono" suppressHydrationWarning>
               {formatMatchDateTime(fixture.match_date, { includeYear: true })}
             </span>
           </div>
 
           <div className="flex justify-between items-center">
             <div className="text-right flex-1">
-              <div className="text-lg font-bold text-gray-800">{fixture.home_team}</div>
+              <div className="text-lg font-bold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">{fixture.home_team}</div>
             </div>
-            <div className="px-4 text-gray-300 font-light">vs</div>
+            <div className="px-4 text-[var(--text-muted)] font-light">vs</div>
             <div className="text-left flex-1">
-              <div className="text-lg font-bold text-gray-800">{fixture.away_team}</div>
+              <div className="text-lg font-bold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">{fixture.away_team}</div>
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">
-            <span className="bg-gray-100 px-2 py-1 rounded">Sezon: {fixture.season}</span>
-            <span className="bg-gray-100 px-2 py-1 rounded">
+          <div className="mt-4 flex flex-wrap gap-2 text-xs text-[var(--text-tertiary)]">
+            <span className="bg-[var(--bg-tertiary)] px-2 py-1 rounded">Sezon: {fixture.season}</span>
+            <span className="bg-[var(--bg-tertiary)] px-2 py-1 rounded font-mono">
               Benzerlik toleransı: ±{SIMILARITY_TOLERANCE_ABS} veya %{Math.round(SIMILARITY_TOLERANCE_PCT * 100)}
             </span>
           </div>
@@ -203,13 +203,13 @@ export default async function MatchDetailPage({ params }: { params: { id: string
 
         <section className="mt-6 grid gap-4 lg:grid-cols-2">
           {oddsGroups.map((group) => (
-            <div key={group.title} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">{group.title}</h3>
+            <div key={group.title} className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4">
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)] mb-3">{group.title}</h3>
               <div className={`grid ${group.gridClass} gap-3 text-center`}>
                 {group.items.map((item) => (
-                  <div key={item.key} className="bg-gray-50 rounded p-2">
-                    <div className="text-xs text-gray-500 mb-1">{item.label}</div>
-                    <div className={`font-mono font-bold ${item.accent ?? 'text-gray-800'}`}>
+                  <div key={item.key} className="bg-[var(--bg-tertiary)] rounded-md p-2">
+                    <div className="text-xs text-[var(--text-tertiary)] mb-1">{item.label}</div>
+                    <div className={`font-mono font-bold tabular-nums ${item.accent ?? 'text-[var(--text-primary)]'}`}>
                       {formatOdd(fixture[item.key])}
                     </div>
                   </div>
@@ -221,44 +221,44 @@ export default async function MatchDetailPage({ params }: { params: { id: string
 
         <section className="mt-10">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-800">Geçmiş Benzer Maçlar</h2>
-            <span className="text-xs text-gray-500">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Geçmiş Benzer Maçlar</h2>
+            <span className="text-xs text-[var(--text-tertiary)] font-mono">
               {similarMatches.length} eşleşme
             </span>
           </div>
 
           {similarMatches.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-sm text-gray-500">
+            <div className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-6 text-sm text-[var(--text-tertiary)]">
               Bu oranlara yakın geçmiş maç bulunamadı.
             </div>
           ) : (
             <div className="grid gap-4">
               {similarMatches.map((match) => (
-                <div key={match.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                <div key={match.id} className="bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] p-4 hover:border-[var(--border-accent)] hover:shadow-[var(--glow-blue)] transition-all">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-xs text-gray-500">{match.league}</div>
-                      <div className="text-base font-semibold text-gray-800">
+                      <div className="text-xs text-[var(--text-tertiary)]">{match.league}</div>
+                      <div className="text-base font-semibold text-[var(--text-primary)]">
                         {match.home_team} vs {match.away_team}
                       </div>
-                      <div className="text-xs text-gray-400" suppressHydrationWarning>
+                      <div className="text-xs text-[var(--text-muted)] font-mono" suppressHydrationWarning>
                         {formatMatchDateTime(match.match_date, { includeYear: true })}
                       </div>
                     </div>
-                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${getBadgeClass(match.matchCount)}`}>
+                    <span className={`text-xs font-semibold font-mono px-2 py-1 rounded-full ${getBadgeClass(match.matchCount)}`}>
                       {match.matchCount}/{totalCategories} eşleşme
                     </span>
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     {match.matchedCategoryIds.map((categoryId) => (
-                      <span key={categoryId} className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                      <span key={categoryId} className="bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] px-2 py-1 rounded">
                         {CATEGORY_LABELS[categoryId]}
                       </span>
                     ))}
                   </div>
 
-                  <div className="mt-3 text-xs text-gray-500 flex flex-wrap gap-3">
+                  <div className="mt-3 text-xs text-[var(--text-tertiary)] font-mono flex flex-wrap gap-3">
                     <span>Skor: {match.score_ft ?? '-'}</span>
                     {match.score_ht ? <span>İY: {match.score_ht}</span> : null}
                   </div>

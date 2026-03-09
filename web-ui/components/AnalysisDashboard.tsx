@@ -10,6 +10,7 @@ import {
   type MatchWithScores,
   type OddsKey,
 } from '@/lib/match'
+import { useFilterOptions, groupLeaguesByCountry } from '@/lib/useFilterOptions'
 
 type AnalysisDashboardProps = {
   match: MatchWithScores
@@ -40,6 +41,7 @@ const formatTolerance = (value: number) => value.toFixed(1).replace('.', ',')
 type SimilarMatch = OddsTableMatch & MatchWithScores
 
 export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
+  const { leagues, seasons } = useFilterOptions()
   const [tolerancePercent, setTolerancePercent] = useState(DEFAULT_TOLERANCE)
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [selectedLeague, setSelectedLeague] = useState(ALL_OPTION)
@@ -124,7 +126,6 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
     fetchSimilarMatches(newPage)
   }
 
-  // Client-side filtering by category and min match count
   const filteredMatches = useMemo(() => {
     let filtered = similarMatches
     if (selectedMinMatchCount !== null) {
@@ -219,53 +220,63 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
 
   return (
     <>
-      <section className="mt-6">
+      <section className="mt-6 animate-in">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-700">Seçili Maç Oranları</h2>
-          <span className="text-xs text-gray-500">
+          <h2 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Seçili Maç Oranları</h2>
+          <span className="text-xs text-[var(--text-tertiary)]">
             Tutan oranlar yeşil renkle işaretlidir.
           </span>
         </div>
         <MatchOddsTable matches={[baseRow]} totalCategories={availableCategories.length} />
       </section>
 
-      <section className="mt-6 grid gap-4 lg:grid-cols-[1.3fr_1fr]">
-        <div className="rounded-xl border border-gray-100 bg-white p-4">
+      <section className="mt-6 grid gap-4 lg:grid-cols-[1.3fr_1fr] animate-in">
+        <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 card-glow">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-700">Filtreler</h3>
-            <button type="button" onClick={resetFilters} className="text-[11px] text-blue-600 hover:text-blue-700">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Filtreler</h3>
+            <button type="button" onClick={resetFilters} className="text-[11px] text-[var(--accent-blue)] hover:brightness-110">
               Filtreleri temizle
             </button>
           </div>
 
           <div className="space-y-5">
             <div className="grid gap-3 md:grid-cols-2">
-              <label className="text-xs text-gray-500">
+              <label className="text-xs text-[var(--text-tertiary)]">
                 Lig
-                <input
-                  type="text"
-                  placeholder="Tümü"
-                  value={selectedLeague === ALL_OPTION ? '' : selectedLeague}
-                  onChange={(event) => setSelectedLeague(event.target.value.trim() || ALL_OPTION)}
-                  className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
-                />
+                <select
+                  value={selectedLeague}
+                  onChange={(event) => setSelectedLeague(event.target.value)}
+                  className="mt-2 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
+                >
+                  <option value={ALL_OPTION}>Tümü</option>
+                  {groupLeaguesByCountry(leagues).map((group) => (
+                    <optgroup key={group.country} label={group.country}>
+                      {group.items.map((league) => (
+                        <option key={league.value} value={league.value}>{league.label}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </label>
-              <label className="text-xs text-gray-500">
+              <label className="text-xs text-[var(--text-tertiary)]">
                 Sezon
-                <input
-                  type="text"
-                  placeholder="Tümü"
-                  value={selectedSeason === ALL_OPTION ? '' : selectedSeason}
-                  onChange={(event) => setSelectedSeason(event.target.value.trim() || ALL_OPTION)}
-                  className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
-                />
+                <select
+                  value={selectedSeason}
+                  onChange={(event) => setSelectedSeason(event.target.value)}
+                  className="mt-2 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
+                >
+                  <option value={ALL_OPTION}>Tümü</option>
+                  {seasons.map((season) => (
+                    <option key={season} value={season}>{season}</option>
+                  ))}
+                </select>
               </label>
             </div>
 
             <div>
-              <div className="flex items-center justify-between text-xs text-gray-500">
+              <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)]">
                 <span>Tolerans</span>
-                <span>%{formatTolerance(tolerancePercent)}</span>
+                <span className="font-mono">%{formatTolerance(tolerancePercent)}</span>
               </div>
               <input
                 type="range"
@@ -274,18 +285,18 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                 step={TOLERANCE_STEP}
                 value={tolerancePercent}
                 onChange={(event) => setTolerancePercent(Number(event.target.value))}
-                className="mt-2 w-full accent-emerald-500"
+                className="mt-2 w-full"
               />
-              <div className="mt-1 flex items-center justify-between text-[10px] text-gray-400">
+              <div className="mt-1 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
                 <span>%0</span>
                 <span>%5</span>
               </div>
             </div>
 
             <div>
-              <div className="text-xs text-gray-500 mb-2">Kategori filtresi</div>
+              <div className="text-xs text-[var(--text-tertiary)] mb-2">Kategori filtresi</div>
               {availableCategories.length === 0 ? (
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-[var(--text-muted)]">
                   Oranlar eksik olduğu için kategori filtresi kapalı.
                 </div>
               ) : (
@@ -297,10 +308,10 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                         key={category.id}
                         type="button"
                         onClick={() => toggleCategory(category.id)}
-                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                        className={`rounded-md border px-3 py-1 text-[11px] font-medium transition-all ${
                           isSelected
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                            : 'border-gray-200 bg-gray-50 text-gray-500 hover:border-gray-300'
+                            ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] border-[var(--accent-blue)]'
+                            : 'bg-transparent text-[var(--text-tertiary)] border-[var(--border-primary)] hover:border-[var(--text-muted)]'
                         }`}
                       >
                         {CATEGORY_LABELS[category.id] ?? category.label}
@@ -312,9 +323,9 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
             </div>
 
             <div>
-              <div className="text-xs text-gray-500 mb-2">Minimum eşleşme</div>
+              <div className="text-xs text-[var(--text-tertiary)] mb-2">Minimum eşleşme</div>
               {availableCategories.length === 0 ? (
-                <div className="text-xs text-gray-400">
+                <div className="text-xs text-[var(--text-muted)]">
                   Oranlar eksik olduğu için eşleşme filtresi kapalı.
                 </div>
               ) : (
@@ -322,10 +333,10 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                   <button
                     type="button"
                     onClick={() => setSelectedMinMatchCount(null)}
-                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                    className={`rounded-md border px-3 py-1 text-[11px] font-medium transition-all ${
                       selectedMinMatchCount === null
-                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                        : 'border-gray-200 bg-gray-50 text-gray-500 hover:border-gray-300'
+                        ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] border-[var(--accent-blue)]'
+                        : 'bg-transparent text-[var(--text-tertiary)] border-[var(--border-primary)] hover:border-[var(--text-muted)]'
                     }`}
                   >
                     Tümü
@@ -337,10 +348,10 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                         key={count}
                         type="button"
                         onClick={() => setSelectedMinMatchCount(count)}
-                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${
+                        className={`rounded-md border px-3 py-1 text-[11px] font-medium transition-all ${
                           isSelected
-                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                            : 'border-gray-200 bg-gray-50 text-gray-500 hover:border-gray-300'
+                            ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] border-[var(--accent-blue)]'
+                            : 'bg-transparent text-[var(--text-tertiary)] border-[var(--border-primary)] hover:border-[var(--text-muted)]'
                         }`}
                       >
                         {`${count}/${availableCategories.length}+`}
@@ -354,56 +365,56 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-gray-100 bg-white p-4">
+          <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 card-glow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-700">Kategori istatistikleri</h3>
-              <span className="text-[11px] text-gray-400">{filteredMatches.length} maç</span>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Kategori istatistikleri</h3>
+              <span className="text-[11px] text-[var(--text-muted)] font-mono">{filteredMatches.length} maç</span>
             </div>
             {filteredMatches.length === 0 ? (
-              <div className="text-xs text-gray-400">Gösterilecek istatistik bulunamadı.</div>
+              <div className="text-xs text-[var(--text-muted)]">Gösterilecek istatistik bulunamadı.</div>
             ) : (
               <div className="space-y-2">
                 {categoryStats.map((stat) => (
                   <div key={stat.id} className="flex items-center gap-3">
-                    <span className="w-24 text-[11px] text-gray-500">{stat.label}</span>
-                    <div className="flex-1 h-2 rounded-full bg-gray-100">
-                      <div className="h-2 rounded-full bg-emerald-400" style={{ width: `${stat.barWidth}%` }} />
+                    <span className="w-24 text-[11px] text-[var(--text-tertiary)]">{stat.label}</span>
+                    <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
+                      <div className="h-1.5 rounded-full bg-[var(--accent-win)] transition-all duration-500" style={{ width: `${stat.barWidth}%` }} />
                     </div>
-                    <span className="text-[11px] text-gray-500">{stat.count}</span>
-                    <span className="text-[11px] text-gray-400">%{stat.percent}</span>
+                    <span className="text-[11px] font-mono text-[var(--text-secondary)]">{stat.count}</span>
+                    <span className="text-[11px] font-mono text-[var(--text-muted)]">%{stat.percent}</span>
                   </div>
                 ))}
               </div>
             )}
-            <div className="mt-3 text-[10px] text-gray-400">
+            <div className="mt-3 text-[10px] text-[var(--text-muted)]">
               Grafik, listelenen benzer maçlara göre hesaplanır.
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-100 bg-white p-4">
+          <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 card-glow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-700">Sonuç dağılımı</h3>
-              <span className="text-[11px] text-gray-400">{filteredMatches.length} maç</span>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Sonuç dağılımı</h3>
+              <span className="text-[11px] text-[var(--text-muted)] font-mono">{filteredMatches.length} maç</span>
             </div>
             {filteredMatches.length === 0 ? (
-              <div className="text-xs text-gray-400">Gösterilecek veri bulunamadı.</div>
+              <div className="text-xs text-[var(--text-muted)]">Gösterilecek veri bulunamadı.</div>
             ) : (
               <div className="space-y-4">
                 {resultStats.map((group) => (
                   <div key={group.id}>
-                    <div className="text-[11px] font-semibold text-gray-500 mb-2">{group.label}</div>
+                    <div className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">{group.label}</div>
                     {group.total === 0 ? (
-                      <div className="text-[11px] text-gray-400">Bu kategoride skor bulunamadı.</div>
+                      <div className="text-[11px] text-[var(--text-muted)]">Bu kategoride skor bulunamadı.</div>
                     ) : (
                       <div className="space-y-2">
                         {group.items.map((item) => (
                           <div key={item.key} className="flex items-center gap-3">
-                            <span className="w-16 text-[11px] text-gray-500">{item.label}</span>
-                            <div className="flex-1 h-2 rounded-full bg-gray-100">
-                              <div className="h-2 rounded-full bg-blue-400" style={{ width: `${item.percent}%` }} />
+                            <span className="w-16 text-[11px] text-[var(--text-tertiary)]">{item.label}</span>
+                            <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
+                              <div className="h-1.5 rounded-full bg-[var(--accent-blue)] transition-all duration-500" style={{ width: `${item.percent}%` }} />
                             </div>
-                            <span className="text-[11px] text-gray-500">{item.count}</span>
-                            <span className="text-[11px] text-gray-400">%{item.percent}</span>
+                            <span className="text-[11px] font-mono text-[var(--text-secondary)]">{item.count}</span>
+                            <span className="text-[11px] font-mono text-[var(--text-muted)]">%{item.percent}</span>
                           </div>
                         ))}
                       </div>
@@ -412,25 +423,28 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                 ))}
               </div>
             )}
-            <div className="mt-3 text-[10px] text-gray-400">
+            <div className="mt-3 text-[10px] text-[var(--text-muted)]">
               Yüzdeler, kategori bazında hesaplanır.
             </div>
           </div>
         </div>
       </section>
 
-      <section className="mt-8">
+      <section className="mt-8 animate-in">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-700">Benzer Oranlı Geçmiş Maçlar</h2>
-          <span className="text-xs text-gray-500">{total} eşleşme</span>
+          <h2 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Benzer Oranlı Geçmiş Maçlar</h2>
+          <span className="text-xs text-[var(--text-tertiary)] font-mono">{total} eşleşme</span>
         </div>
 
         {isLoading ? (
-          <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500 text-center">
-            Yükleniyor...
+          <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-6 space-y-3">
+            <div className="skeleton h-4 w-3/4" />
+            <div className="skeleton h-4 w-1/2" />
+            <div className="skeleton h-4 w-5/6" />
+            <div className="skeleton h-4 w-2/3" />
           </div>
         ) : filteredMatches.length === 0 ? (
-          <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500">
+          <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-6 text-sm text-[var(--text-tertiary)]">
             Seçili filtrelerde eşleşen geçmiş maç bulunamadı.
           </div>
         ) : (
@@ -443,16 +457,16 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                   type="button"
                   disabled={page <= 1}
                   onClick={() => handlePageChange(page - 1)}
-                  className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40"
+                  className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
                 >
                   Önceki
                 </button>
-                <span className="text-xs text-gray-500">{page} / {totalPages}</span>
+                <span className="text-xs text-[var(--text-tertiary)] font-mono">{page} / {totalPages}</span>
                 <button
                   type="button"
                   disabled={page >= totalPages}
                   onClick={() => handlePageChange(page + 1)}
-                  className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40"
+                  className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
                 >
                   Sonraki
                 </button>

@@ -103,17 +103,17 @@ export default async function PerfectMatchPage({
         ])
 
     return (
-        <main className="min-h-screen bg-gray-50 p-3 md:p-5">
-            <div className="max-w-[1400px] mx-auto">
-                <Header totalMatches={fixtures.length} />
+        <main className="min-h-screen bg-grid">
+            <Header totalMatches={fixtures.length} />
+            <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 stagger">
 
                 <div className="mb-6">
-                    <h2 className="text-xl font-bold text-gray-800 mb-2">
+                    <h2 className="text-xl font-bold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)] mb-2">
                         Mükemmel Eşleşme
                     </h2>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-[var(--text-tertiary)]">
                         Bugünkü maçların oranlarını geçmiş maçlarla karşılaştır ve{' '}
-                        <strong>tam eşleşme</strong> (tolerans 0) bulunanları gör.
+                        <strong className="text-[var(--text-secondary)]">tam eşleşme</strong> (tolerans 0) bulunanları gör.
                     </p>
                 </div>
 
@@ -123,20 +123,19 @@ export default async function PerfectMatchPage({
                 />
 
                 {errorMessage ? (
-                    <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <div className="mb-6 rounded-lg border border-[var(--accent-loss)] bg-[var(--accent-loss-bg)] px-4 py-3 text-sm text-[var(--accent-loss)]">
                         Supabase hata mesajı: {errorMessage}
                     </div>
                 ) : null}
 
                 {fixtures.length === 0 ? (
-                    <div className="text-center py-16 bg-white rounded-lg shadow border border-gray-100">
-                        <div className="text-4xl mb-3">📅</div>
-                        <h3 className="text-lg font-medium text-gray-700 mb-2">
+                    <div className="text-center py-16 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)]">
+                        <h3 className="text-lg font-medium text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)] mb-2">
                             {selectedDateKey === todayKey
                                 ? 'Bugün için maç bulunamadı'
                                 : `${formatDateKeyLabel(selectedDateKey)} için maç bulunamadı`}
                         </h3>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-[var(--text-tertiary)]">
                             Oranı olan maç bulunmamaktadır.
                         </p>
                     </div>

@@ -51,14 +51,16 @@ const ODDS_GROUPS = ODDS_CATEGORIES.map((category) => ({
 const ODDS_COLUMNS = ODDS_GROUPS.flatMap((group) => group.fields)
 
 const getCellClass = (isHit: boolean) =>
-  isHit ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-100 bg-white text-gray-700'
+  isHit
+    ? 'border-[var(--border-subtle)] bg-[var(--accent-win-bg)] text-[var(--accent-win)] font-semibold'
+    : 'border-[var(--border-subtle)] text-[var(--text-secondary)]'
 
 const getMatchBadgeClass = (count: number, total: number) => {
-  if (total === 0) return 'bg-gray-100 text-gray-600'
-  if (count === total) return 'bg-emerald-100 text-emerald-700'
-  if (count >= Math.max(1, total - 1)) return 'bg-green-100 text-green-700'
-  if (count >= Math.ceil(total / 2)) return 'bg-yellow-100 text-yellow-700'
-  return 'bg-orange-100 text-orange-700'
+  if (total === 0) return 'bg-[var(--bg-tertiary)] text-[var(--text-tertiary)]'
+  if (count === total) return 'bg-[var(--accent-win-bg)] text-[var(--accent-win)]'
+  if (count >= Math.max(1, total - 1)) return 'bg-[var(--accent-win-bg)] text-[var(--accent-win)]'
+  if (count >= Math.ceil(total / 2)) return 'bg-[var(--accent-draw-bg)] text-[var(--accent-draw)]'
+  return 'bg-[var(--accent-loss-bg)] text-[var(--accent-loss)]'
 }
 
 const ROW_HEIGHT = 60
@@ -86,16 +88,16 @@ export const MatchOddsTable = ({
     const outcomeKeys = getOutcomeKeys(match)
     return (
       <>
-        <td className="px-3 py-3">
+        <td className="px-3 py-2">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="font-semibold text-gray-900">
+              <div className="font-semibold text-[var(--text-primary)]">
                 {match.home_team} vs {match.away_team}
               </div>
-              <div className="text-[10px] text-gray-400">{match.league}</div>
+              <div className="text-[10px] text-[var(--text-muted)]">{match.league}</div>
             </div>
             <div
-              className={`shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-semibold ${getMatchBadgeClass(
+              className={`shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-semibold font-mono ${getMatchBadgeClass(
                 match.matchCount,
                 totalCategories
               )}`}
@@ -108,26 +110,26 @@ export const MatchOddsTable = ({
           {match.matchedCategoryIds.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-1">
               {match.matchedCategoryIds.map((categoryId) => (
-                <span key={categoryId} className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500">
+                <span key={categoryId} className="rounded-full bg-[var(--bg-tertiary)] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)]">
                   {CATEGORY_LABELS[categoryId] ?? categoryId}
                 </span>
               ))}
             </div>
           ) : null}
         </td>
-        <td className="px-3 py-3" suppressHydrationWarning>
+        <td className="px-3 py-2 text-[var(--text-secondary)]" suppressHydrationWarning>
           {formatMatchDateTime(match.match_date, { includeYear: true })}
         </td>
-        <td className="px-3 py-3 text-center">
-          <div>{match.score_ft ?? '-'}</div>
+        <td className="px-3 py-2 text-center font-mono">
+          <div className="text-[var(--text-primary)]">{match.score_ft ?? '-'}</div>
           {match.score_ht ? (
-            <div className="text-[10px] text-gray-400">{`İY: ${match.score_ht}`}</div>
+            <div className="text-[10px] text-[var(--text-muted)]">{`İY: ${match.score_ht}`}</div>
           ) : null}
         </td>
         {ODDS_COLUMNS.map((field) => (
           <td
             key={`${match.id}-${field}`}
-            className={`px-3 py-3 text-center font-mono border ${getCellClass(outcomeKeys.has(field))}`}
+            className={`px-3 py-2 text-center font-mono tabular-nums border ${getCellClass(outcomeKeys.has(field))}`}
           >
             {formatOdd(match[field])}
           </td>
@@ -137,20 +139,20 @@ export const MatchOddsTable = ({
   }
 
   const tableHeader = (
-    <thead className="bg-gray-50 text-gray-500 sticky top-0 z-10">
+    <thead className="bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] text-xs uppercase tracking-wider sticky top-0 z-10">
       <tr>
-        <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Maç</th>
-        <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Tarih</th>
-        <th rowSpan={2} className="px-3 py-3 text-center font-semibold">Skor</th>
+        <th rowSpan={2} className="px-3 py-2 text-left font-medium">Maç</th>
+        <th rowSpan={2} className="px-3 py-2 text-left font-medium">Tarih</th>
+        <th rowSpan={2} className="px-3 py-2 text-center font-medium">Skor</th>
         {ODDS_GROUPS.map((group) => (
-          <th key={group.id} colSpan={group.fields.length} className="px-3 py-2 text-center font-semibold">
+          <th key={group.id} colSpan={group.fields.length} className="px-3 py-2 text-center font-medium">
             {group.label}
           </th>
         ))}
       </tr>
       <tr>
         {ODDS_COLUMNS.map((field) => (
-          <th key={field} className="px-3 py-2 text-center font-semibold">
+          <th key={field} className="px-3 py-2 text-center font-medium">
             {ODDS_LABELS[field]}
           </th>
         ))}
@@ -160,12 +162,12 @@ export const MatchOddsTable = ({
 
   if (!useVirtual) {
     return (
-      <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] card-glow">
         <table className="min-w-full text-xs">
           {tableHeader}
-          <tbody className="divide-y divide-gray-100 text-gray-700">
+          <tbody className="divide-y divide-[var(--border-subtle)]">
             {matches.map((match) => (
-              <tr key={match.id} className="hover:bg-gray-50">
+              <tr key={match.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
                 {renderRow(match)}
               </tr>
             ))}
@@ -178,11 +180,11 @@ export const MatchOddsTable = ({
   return (
     <div
       ref={parentRef}
-      className="overflow-x-auto overflow-y-auto max-h-[600px] rounded-xl border border-gray-100 bg-white"
+      className="overflow-x-auto overflow-y-auto max-h-[600px] rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] card-glow"
     >
       <table className="min-w-full text-xs">
         {tableHeader}
-        <tbody className="divide-y divide-gray-100 text-gray-700">
+        <tbody className="divide-y divide-[var(--border-subtle)]">
           {virtualizer.getVirtualItems().length > 0 && (
             <tr style={{ height: virtualizer.getVirtualItems()[0].start }}>
               <td colSpan={3 + ODDS_COLUMNS.length} />
@@ -195,7 +197,7 @@ export const MatchOddsTable = ({
                 key={match.id}
                 data-index={virtualRow.index}
                 ref={virtualizer.measureElement}
-                className="hover:bg-gray-50"
+                className="hover:bg-[var(--bg-tertiary)] transition-colors"
               >
                 {renderRow(match)}
               </tr>

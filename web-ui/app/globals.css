@@ -1,98 +1,136 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg-primary: #0B0F19;
+  --bg-secondary: #111827;
+  --bg-tertiary: #1E293B;
+  --bg-elevated: #1A2332;
+
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-tertiary: #64748B;
+  --text-muted: #475569;
+
+  --border-primary: #1E293B;
+  --border-subtle: #ffffff0d;
+  --border-accent: #3B82F620;
+
+  --accent-win: #10B981;
+  --accent-draw: #F59E0B;
+  --accent-loss: #EF4444;
+  --accent-blue: #3B82F6;
+  --accent-cyan: #06B6D4;
+  --accent-purple: #8B5CF6;
+
+  --accent-win-bg: #10B98115;
+  --accent-draw-bg: #F59E0B15;
+  --accent-loss-bg: #EF444415;
+  --accent-blue-bg: #3B82F615;
+
+  --glow-blue: 0 0 20px #3B82F630;
+  --glow-green: 0 0 15px #10B98125;
+  --glow-amber: 0 0 15px #F59E0B20;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --font-display: var(--font-space-grotesk);
+  --font-body: var(--font-plus-jakarta);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-primary);
+  background-image:
+    radial-gradient(ellipse at 20% 50%, #1E293B40 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, #3B82F608 0%, transparent 40%);
+  color: var(--text-primary);
+  font-family: var(--font-body), 'Plus Jakarta Sans', sans-serif;
 }
 
-.fixture-calendar {
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  background: #f9fafb;
-  padding: 12px;
-  width: 100%;
-  max-width: 320px;
+/* Skeleton loading */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-.fixture-calendar .react-datepicker__header {
-  background: transparent;
-  border-bottom: none;
-  padding-top: 4px;
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-elevated) 50%, var(--bg-tertiary) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
 }
 
-.fixture-calendar .react-datepicker__current-month {
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
+/* Grid background pattern */
+.bg-grid {
+  background-image:
+    linear-gradient(var(--border-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+  background-size: 40px 40px;
 }
 
-.fixture-calendar .react-datepicker__day-name,
-.fixture-calendar .react-datepicker__day {
-  width: 36px;
-  line-height: 36px;
-  margin: 2px;
-  border-radius: 10px;
+/* Fade-in animation + stagger system */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-in { opacity: 0; animation: fadeInUp 0.4s ease-out forwards; }
+.stagger > * { opacity: 0; animation: fadeInUp 0.4s ease-out forwards; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(6) { animation-delay: 300ms; }
+.stagger > *:nth-child(7) { animation-delay: 360ms; }
+.stagger > *:nth-child(8) { animation-delay: 420ms; }
+
+/* Card hover glow */
+.card-glow { transition: border-color 0.2s, box-shadow 0.2s; }
+.card-glow:hover { border-color: var(--border-accent); box-shadow: var(--glow-blue); }
+
+/* Select dark styling */
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2364748B' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 28px;
 }
 
-.fixture-calendar .react-datepicker__day {
-  color: #374151;
-  font-weight: 500;
+select option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
-.fixture-calendar .react-datepicker__day--keyboard-selected,
-.fixture-calendar .react-datepicker__day--selected {
-  background: #2563eb;
-  color: #ffffff;
+/* Range input dark styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  outline: none;
 }
 
-.fixture-calendar .react-datepicker__day--today {
-  border: 1px solid #93c5fd;
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
 }
 
-.fixture-calendar .react-datepicker__navigation {
-  top: 12px;
-}
-
-.fixture-calendar .react-datepicker__navigation-icon::before {
-  border-color: #6b7280;
-}
-
-.fixture-calendar .react-datepicker__day--outside-month {
-  color: #d1d5db;
-}
-
-.fixture-day--available {
-  position: relative;
-}
-
-.fixture-day--available::after {
-  content: '';
-  position: absolute;
-  bottom: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
-  border-radius: 999px;
-  background: #10b981;
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
 }

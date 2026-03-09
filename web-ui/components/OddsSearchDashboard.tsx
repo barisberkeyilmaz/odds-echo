@@ -11,6 +11,7 @@ import {
   type MatchWithScores,
   type OddsKey,
 } from '@/lib/match'
+import { useFilterOptions, groupLeaguesByCountry } from '@/lib/useFilterOptions'
 
 const MIN_TOLERANCE = 0
 const MAX_TOLERANCE = 5
@@ -62,6 +63,7 @@ const parseInputValue = (value: string) => {
 }
 
 export default function OddsSearchDashboard() {
+  const { leagues, seasons } = useFilterOptions()
   const [oddsInputs, setOddsInputs] = useState<Record<OddsKey, string>>(buildInitialInputs)
   const [tolerancePercent, setTolerancePercent] = useState(DEFAULT_TOLERANCE)
   const [selectedLeague, setSelectedLeague] = useState(ALL_OPTION)
@@ -126,7 +128,6 @@ export default function OddsSearchDashboard() {
     }
   }, [selectedFields, parsedInputs, tolerancePercent, selectedLeague, selectedSeason])
 
-  // Debounced search
   useEffect(() => {
     setPage(1)
     const timer = setTimeout(() => {
@@ -135,7 +136,6 @@ export default function OddsSearchDashboard() {
     return () => clearTimeout(timer)
   }, [fetchMatches])
 
-  // Page change (no debounce)
   const handlePageChange = (newPage: number) => {
     setPage(newPage)
     fetchMatches(newPage)
@@ -144,7 +144,6 @@ export default function OddsSearchDashboard() {
   const displayGroups = ODDS_CATEGORIES
   const displayFields = ODDS_FIELDS
 
-  // Compute result stats from current page matches
   const resultStats = useMemo(() => {
     const groupTotals = new Map<string, number>()
     const groupCounts = new Map<string, Map<OddsKey, number>>()
@@ -194,20 +193,20 @@ export default function OddsSearchDashboard() {
 
   return (
     <>
-      <section className="mt-6 grid gap-6 lg:grid-cols-[320px_1fr]">
+      <section className="mt-6 grid gap-6 lg:grid-cols-[280px_1fr] stagger">
         <aside className="space-y-4">
-          <div className="rounded-xl border border-gray-100 bg-white p-5">
+          <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 card-glow">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
-                <h2 className="text-sm font-semibold text-gray-700">Oran Girişi</h2>
-                <p className="text-xs text-gray-500 mt-1">
+                <h2 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Oran Girişi</h2>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1">
                   Aramak istediğiniz oranları girin, tolerans aralığı ile eşleşen maçları listeleyelim.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={resetInputs}
-                className="text-[11px] text-blue-600 hover:text-blue-700"
+                className="text-[11px] text-[var(--accent-blue)] hover:brightness-110"
               >
                 Tümünü temizle
               </button>
@@ -216,10 +215,10 @@ export default function OddsSearchDashboard() {
             <div className="space-y-5">
               {ODDS_CATEGORIES.map((category) => (
                 <div key={category.id}>
-                  <div className="text-xs font-semibold text-gray-500 mb-2">{category.label}</div>
+                  <div className="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">{category.label}</div>
                   <div className="grid grid-cols-2 gap-3">
                     {category.fields.map((field) => (
-                      <label key={field} className="text-[11px] text-gray-500">
+                      <label key={field} className="text-[11px] text-[var(--text-tertiary)]">
                         {ODDS_LABELS[field]}
                         <input
                           type="number"
@@ -230,7 +229,7 @@ export default function OddsSearchDashboard() {
                           onChange={(event) =>
                             setOddsInputs((prev) => ({ ...prev, [field]: event.target.value }))
                           }
-                          className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700"
+                          className="mt-1 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
                         />
                       </label>
                     ))}
@@ -240,17 +239,17 @@ export default function OddsSearchDashboard() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-100 bg-white p-4">
+          <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 card-glow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-700">Arama Ayarları</h3>
-              <span className="text-[11px] text-gray-400">{total} maç</span>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Arama Ayarları</h3>
+              <span className="text-[11px] text-[var(--text-muted)] font-mono">{total} maç</span>
             </div>
 
             <div className="space-y-5">
               <div>
-                <div className="flex items-center justify-between text-xs text-gray-500">
+                <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)]">
                   <span>Tolerans</span>
-                  <span>%{formatTolerance(tolerancePercent)}</span>
+                  <span className="font-mono">%{formatTolerance(tolerancePercent)}</span>
                 </div>
                 <input
                   type="range"
@@ -259,53 +258,59 @@ export default function OddsSearchDashboard() {
                   step={TOLERANCE_STEP}
                   value={tolerancePercent}
                   onChange={(event) => setTolerancePercent(Number(event.target.value))}
-                  className="mt-2 w-full accent-emerald-500"
+                  className="mt-2 w-full"
                 />
-                <div className="mt-1 flex items-center justify-between text-[10px] text-gray-400">
+                <div className="mt-1 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
                   <span>%0</span>
                   <span>%5</span>
                 </div>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-xs text-gray-500">
+                <label className="text-xs text-[var(--text-tertiary)]">
                   Lig
-                  <input
-                    type="text"
-                    placeholder="Lig adı"
-                    value={selectedLeague === ALL_OPTION ? '' : selectedLeague}
-                    onChange={(event) =>
-                      setSelectedLeague(event.target.value.trim() || ALL_OPTION)
-                    }
-                    className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
-                  />
+                  <select
+                    value={selectedLeague}
+                    onChange={(event) => setSelectedLeague(event.target.value)}
+                    className="mt-2 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
+                  >
+                    <option value={ALL_OPTION}>Tümü</option>
+                    {groupLeaguesByCountry(leagues).map((group) => (
+                      <optgroup key={group.country} label={group.country}>
+                        {group.items.map((league) => (
+                          <option key={league.value} value={league.value}>{league.label}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
                 </label>
-                <label className="text-xs text-gray-500">
+                <label className="text-xs text-[var(--text-tertiary)]">
                   Sezon
-                  <input
-                    type="text"
-                    placeholder="Örn: 2024/2025"
-                    value={selectedSeason === ALL_OPTION ? '' : selectedSeason}
-                    onChange={(event) =>
-                      setSelectedSeason(event.target.value.trim() || ALL_OPTION)
-                    }
-                    className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
-                  />
+                  <select
+                    value={selectedSeason}
+                    onChange={(event) => setSelectedSeason(event.target.value)}
+                    className="mt-2 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
+                  >
+                    <option value={ALL_OPTION}>Tümü</option>
+                    {seasons.map((season) => (
+                      <option key={season} value={season}>{season}</option>
+                    ))}
+                  </select>
                 </label>
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-100 bg-white p-4">
+          <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 card-glow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-700">Özet</h3>
-              <span className="text-[11px] text-gray-400">{selectedFields.length} oran girildi</span>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Özet</h3>
+              <span className="text-[11px] text-[var(--text-muted)] font-mono">{selectedFields.length} oran girildi</span>
             </div>
-            <div className="text-xs text-gray-500 space-y-2">
+            <div className="text-xs text-[var(--text-tertiary)] space-y-2">
               {selectedFields.length === 0 ? (
                 <div>En az bir oran girerek arama yapabilirsiniz.</div>
               ) : (
-                <div>
+                <div className="font-mono">
                   {total} maç bulundu (sayfa {page}/{totalPages || 1})
                 </div>
               )}
@@ -315,42 +320,42 @@ export default function OddsSearchDashboard() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-100 bg-white p-4">
+          <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 card-glow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-gray-700">Sonuç Dağılımları</h3>
-              <span className="text-[11px] text-gray-400">{matches.length} maç</span>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Sonuç Dağılımları</h3>
+              <span className="text-[11px] text-[var(--text-muted)] font-mono">{matches.length} maç</span>
             </div>
             {matches.length === 0 ? (
-              <div className="text-xs text-gray-400">Gösterilecek veri bulunamadı.</div>
+              <div className="text-xs text-[var(--text-muted)]">Gösterilecek veri bulunamadı.</div>
             ) : (
               <div className="space-y-4">
                 {resultStats.map((group) => (
                   <div key={group.id}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-semibold text-gray-500">{group.label}</span>
+                      <span className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider">{group.label}</span>
                       {group.missing > 0 ? (
-                        <span className="text-[10px] text-gray-400">
+                        <span className="text-[10px] text-[var(--text-muted)]">
                           Skoru olmayan: {group.missing}
                         </span>
                       ) : null}
                     </div>
                     {group.total === 0 ? (
-                      <div className="text-[11px] text-gray-400">
+                      <div className="text-[11px] text-[var(--text-muted)]">
                         Bu kategoride skor bulunamadı.
                       </div>
                     ) : (
                       <div className="space-y-2">
                         {group.items.map((item) => (
                           <div key={item.key} className="flex items-center gap-3">
-                            <span className="w-20 text-[11px] text-gray-500">{item.label}</span>
-                            <div className="flex-1 h-2 rounded-full bg-gray-100">
+                            <span className="w-20 text-[11px] text-[var(--text-tertiary)]">{item.label}</span>
+                            <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
                               <div
-                                className="h-2 rounded-full bg-emerald-400"
+                                className="h-1.5 rounded-full bg-[var(--accent-win)] transition-all duration-500"
                                 style={{ width: `${item.percent}%` }}
                               />
                             </div>
-                            <span className="text-[11px] text-gray-500">{item.count}</span>
-                            <span className="text-[11px] text-gray-400">%{item.percent}</span>
+                            <span className="text-[11px] font-mono text-[var(--text-secondary)]">{item.count}</span>
+                            <span className="text-[11px] font-mono text-[var(--text-muted)]">%{item.percent}</span>
                           </div>
                         ))}
                       </div>
@@ -359,7 +364,7 @@ export default function OddsSearchDashboard() {
                 ))}
               </div>
             )}
-            <div className="mt-3 text-[10px] text-gray-400">
+            <div className="mt-3 text-[10px] text-[var(--text-muted)]">
               Yüzdeler, mevcut sayfa bazında hesaplanır.
             </div>
           </div>
@@ -368,38 +373,42 @@ export default function OddsSearchDashboard() {
         <div className="min-w-0 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-gray-700">Eşleşen Maçlar</h2>
-              <div className="text-[11px] text-gray-400">Tutan oranlar yeşil renkle işaretlidir.</div>
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Eşleşen Maçlar</h2>
+              <div className="text-[11px] text-[var(--text-muted)]">Tutan oranlar yeşil renkle işaretlidir.</div>
             </div>
-            <span className="text-xs text-gray-500">{total} eşleşme</span>
+            <span className="text-xs text-[var(--text-tertiary)] font-mono">{total} eşleşme</span>
           </div>
 
           {isLoading ? (
-            <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500 text-center">
-              Yükleniyor...
+            <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-6 space-y-3">
+              <div className="skeleton h-4 w-3/4" />
+              <div className="skeleton h-4 w-1/2" />
+              <div className="skeleton h-4 w-5/6" />
+              <div className="skeleton h-4 w-2/3" />
+              <div className="skeleton h-4 w-3/4" />
             </div>
           ) : selectedFields.length === 0 ? (
-            <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500">
+            <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-6 text-sm text-[var(--text-tertiary)]">
               Arama yapmak için en az bir oran girmeniz gerekiyor.
             </div>
           ) : matches.length === 0 ? (
-            <div className="rounded-xl border border-gray-100 bg-white p-6 text-sm text-gray-500">
+            <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-6 text-sm text-[var(--text-tertiary)]">
               Seçili tolerans ve filtrelerde eşleşen maç bulunamadı.
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white">
+              <div className="overflow-x-auto rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)]">
                 <table className="min-w-full text-xs">
-                  <thead className="bg-gray-50 text-gray-500">
+                  <thead className="bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] text-xs uppercase tracking-wider">
                     <tr>
-                      <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Maç</th>
-                      <th rowSpan={2} className="px-3 py-3 text-left font-semibold">Tarih</th>
-                      <th rowSpan={2} className="px-3 py-3 text-center font-semibold">Skor</th>
+                      <th rowSpan={2} className="px-3 py-2 text-left font-medium">Maç</th>
+                      <th rowSpan={2} className="px-3 py-2 text-left font-medium">Tarih</th>
+                      <th rowSpan={2} className="px-3 py-2 text-center font-medium">Skor</th>
                       {displayGroups.map((group) => (
                         <th
                           key={group.id}
                           colSpan={group.fields.length}
-                          className="px-3 py-2 text-center font-semibold"
+                          className="px-3 py-2 text-center font-medium"
                         >
                           {group.label}
                         </th>
@@ -407,30 +416,30 @@ export default function OddsSearchDashboard() {
                     </tr>
                     <tr>
                       {displayFields.map((field) => (
-                        <th key={field} className="px-3 py-2 text-center font-semibold">
+                        <th key={field} className="px-3 py-2 text-center font-medium">
                           {ODDS_LABELS[field]}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 text-gray-700">
+                  <tbody className="divide-y divide-[var(--border-subtle)]">
                     {matches.map((match) => {
                       const outcomeKeys = getOutcomeKeys(match)
                       return (
-                        <tr key={match.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-3">
-                            <div className="font-semibold text-gray-900">
+                        <tr key={match.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
+                          <td className="px-3 py-2">
+                            <div className="font-semibold text-[var(--text-primary)]">
                               {match.home_team} vs {match.away_team}
                             </div>
-                            <div className="text-[10px] text-gray-400">{match.league}</div>
+                            <div className="text-[10px] text-[var(--text-muted)]">{match.league}</div>
                           </td>
-                          <td className="px-3 py-3" suppressHydrationWarning>
+                          <td className="px-3 py-2 text-[var(--text-secondary)]" suppressHydrationWarning>
                             {formatMatchDateTime(match.match_date, { includeYear: true })}
                           </td>
-                          <td className="px-3 py-3 text-center">
-                            <div>{match.score_ft ?? '-'}</div>
+                          <td className="px-3 py-2 text-center font-mono">
+                            <div className="text-[var(--text-primary)]">{match.score_ft ?? '-'}</div>
                             {match.score_ht ? (
-                              <div className="text-[10px] text-gray-400">İY: {match.score_ht}</div>
+                              <div className="text-[10px] text-[var(--text-muted)]">İY: {match.score_ht}</div>
                             ) : null}
                           </td>
                           {displayFields.map((field) => {
@@ -438,10 +447,10 @@ export default function OddsSearchDashboard() {
                             return (
                               <td
                                 key={`${match.id}-${field}`}
-                                className={`px-3 py-3 text-center font-mono border ${
+                                className={`px-3 py-2 text-center font-mono tabular-nums border ${
                                   outcomeHit
-                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                    : 'border-gray-100'
+                                    ? 'border-[var(--border-subtle)] bg-[var(--accent-win-bg)] text-[var(--accent-win)] font-semibold'
+                                    : 'border-[var(--border-subtle)] text-[var(--text-secondary)]'
                                 }`}
                               >
                                 {formatOdd(match[field])}
@@ -455,25 +464,24 @@ export default function OddsSearchDashboard() {
                 </table>
               </div>
 
-              {/* Pagination */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-center gap-3 mt-4">
                   <button
                     type="button"
                     disabled={page <= 1}
                     onClick={() => handlePageChange(page - 1)}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40"
+                    className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
                   >
                     Önceki
                   </button>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-[var(--text-tertiary)] font-mono">
                     {page} / {totalPages}
                   </span>
                   <button
                     type="button"
                     disabled={page >= totalPages}
                     onClick={() => handlePageChange(page + 1)}
-                    className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-600 disabled:opacity-40"
+                    className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
                   >
                     Sonraki
                   </button>

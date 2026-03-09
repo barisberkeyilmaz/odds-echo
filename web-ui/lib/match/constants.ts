@@ -33,6 +33,8 @@ export const MATCH_CORE_FIELDS = [
   'away_team',
   'match_date',
   'league',
+  'league_display',
+  'league_country',
   'season',
 ] as const
 

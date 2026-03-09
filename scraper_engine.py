@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from urllib.parse import urlparse, parse_qs
 from config import supabase
+from scripts.normalize_leagues import normalize_league
 
 def clean_odd(value):
     if not value or value == '-' or value == '': return None
@@ -107,10 +108,16 @@ def process_full_match(match_url, driver):
             away = soup.find("a", class_="r-left-block-team-name").get_text(strip=True)
     except Exception: pass
 
+    # Lig ismini normalize et
+    raw_league = match_info["league"] or ""
+    league_display, league_country, _ = normalize_league(raw_league) if raw_league else ("", "", 99)
+
     row = {
         "match_code": match_code,
         "home_team": home, "away_team": away,
-        "league": match_info["league"], "season": match_info["season"],
+        "league": raw_league, "season": match_info["season"],
+        "league_display": league_display or None,
+        "league_country": league_country or None,
         "match_date": match_info["match_date"],
         "score_ft": score_ft, "score_ht": score_ht,
         "status": status

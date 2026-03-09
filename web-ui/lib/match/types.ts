@@ -30,6 +30,8 @@ export type MatchCore = {
   away_team: string
   match_date: string
   league: string
+  league_display?: string | null
+  league_country?: string | null
   season: string
 }
 

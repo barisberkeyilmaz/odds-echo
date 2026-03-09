@@ -102,10 +102,10 @@ export default async function Home({
   ])
 
   return (
-    <main className="min-h-screen bg-gray-50 p-3 md:p-5">
-      <div className="max-w-[1400px] mx-auto">
-        <Header totalMatches={fixtures.length} />
-        <p className="text-xs text-gray-400 mb-6">
+    <main className="min-h-screen bg-grid">
+      <Header totalMatches={fixtures.length} />
+      <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 stagger">
+        <p className="text-xs text-[var(--text-muted)] mb-6">
           Eksik tarih veya takım bilgisi olan maçlar listede gösterilmez. Eksik oranlar '-' olarak görünür.
         </p>
 
@@ -115,15 +115,15 @@ export default async function Home({
         />
 
         {errorMessage ? (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-6 rounded-lg border border-[var(--accent-loss)] bg-[var(--accent-loss-bg)] px-4 py-3 text-sm text-[var(--accent-loss)]">
             Supabase hata mesajı: {errorMessage}
           </div>
         ) : null}
 
         {fixtures.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-lg shadow border border-gray-100">
-            <h2 className="text-lg text-gray-600">Seçili tarihte maç bulunamadı.</h2>
-            <p className="text-gray-400 mt-2">
+          <div className="text-center py-16 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)]">
+            <h2 className="text-lg text-[var(--text-secondary)]">Seçili tarihte maç bulunamadı.</h2>
+            <p className="text-[var(--text-muted)] mt-2">
               {selectedDateKey === todayKey
                 ? 'Veritabanımızda bugün için maç bulunmamaktadır.'
                 : `Veritabanımızda bu tarih için maç bulunmamaktadır: ${formatDateKeyLabel(selectedDateKey)}`}

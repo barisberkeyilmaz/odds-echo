@@ -11,6 +11,7 @@ import {
     type MatchWithScores,
     type OddsKey,
 } from '@/lib/match'
+import { useFilterOptions, groupLeaguesByCountry } from '@/lib/useFilterOptions'
 
 type PerfectMatchDashboardProps = {
     fixtures: MatchWithScores[]
@@ -54,6 +55,7 @@ type FixtureWithMatches = MatchWithScores & {
 }
 
 export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboardProps) {
+    const { leagues, seasons } = useFilterOptions()
     const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>(
         PERFECT_MATCH_CATEGORIES.map((c) => c.id)
     )
@@ -101,7 +103,6 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
         }
     }, [selectedCategoryIds, selectedLeague, selectedSeason])
 
-    // Fetch when expanding a fixture
     useEffect(() => {
         if (expandedFixtureId !== null) {
             fetchPerfectMatches(expandedFixtureId, 1)
@@ -159,7 +160,6 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
         setFixtureResults(new Map())
     }
 
-    // Filter fixtures that have valid odds for selected categories
     const validFixtures = useMemo(() =>
         fixtures.filter((fixture) =>
             selectedCategoryIds.some((catId) => {
@@ -171,40 +171,50 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
 
     return (
         <>
-            <section className="rounded-xl border border-gray-100 bg-white p-4 mb-6">
+            <section className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 mb-6 card-glow">
                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-semibold text-gray-700">Filtreler</h3>
-                    <button type="button" onClick={resetFilters} className="text-[11px] text-blue-600 hover:text-blue-700">
+                    <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Filtreler</h3>
+                    <button type="button" onClick={resetFilters} className="text-[11px] text-[var(--accent-blue)] hover:brightness-110">
                         Filtreleri temizle
                     </button>
                 </div>
 
                 <div className="space-y-5">
                     <div className="grid gap-3 md:grid-cols-2">
-                        <label className="text-xs text-gray-500">
+                        <label className="text-xs text-[var(--text-tertiary)]">
                             Geçmiş Maç Ligi
-                            <input
-                                type="text"
-                                placeholder="Tümü"
-                                value={selectedLeague === ALL_OPTION ? '' : selectedLeague}
-                                onChange={(e) => setSelectedLeague(e.target.value.trim() || ALL_OPTION)}
-                                className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
-                            />
+                            <select
+                                value={selectedLeague}
+                                onChange={(e) => setSelectedLeague(e.target.value)}
+                                className="mt-2 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
+                            >
+                                <option value={ALL_OPTION}>Tümü</option>
+                                {groupLeaguesByCountry(leagues).map((group) => (
+                                    <optgroup key={group.country} label={group.country}>
+                                        {group.items.map((league) => (
+                                            <option key={league.value} value={league.value}>{league.label}</option>
+                                        ))}
+                                    </optgroup>
+                                ))}
+                            </select>
                         </label>
-                        <label className="text-xs text-gray-500">
+                        <label className="text-xs text-[var(--text-tertiary)]">
                             Geçmiş Maç Sezonu
-                            <input
-                                type="text"
-                                placeholder="Tümü"
-                                value={selectedSeason === ALL_OPTION ? '' : selectedSeason}
-                                onChange={(e) => setSelectedSeason(e.target.value.trim() || ALL_OPTION)}
-                                className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600"
-                            />
+                            <select
+                                value={selectedSeason}
+                                onChange={(e) => setSelectedSeason(e.target.value)}
+                                className="mt-2 w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
+                            >
+                                <option value={ALL_OPTION}>Tümü</option>
+                                {seasons.map((season) => (
+                                    <option key={season} value={season}>{season}</option>
+                                ))}
+                            </select>
                         </label>
                     </div>
 
                     <div>
-                        <div className="text-xs text-gray-500 mb-2">
+                        <div className="text-xs text-[var(--text-tertiary)] mb-2">
                             Eşleşme Kategorileri ({selectedCategoryIds.length}/{PERFECT_MATCH_CATEGORIES.length} seçili)
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -215,9 +225,9 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                         key={category.id}
                                         type="button"
                                         onClick={() => toggleCategory(category.id)}
-                                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition ${isSelected
-                                            ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                                            : 'border-gray-200 bg-gray-50 text-gray-500 hover:border-gray-300'
+                                        className={`rounded-md border px-3 py-1 text-[11px] font-medium transition-all ${isSelected
+                                            ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] border-[var(--accent-blue)]'
+                                            : 'bg-transparent text-[var(--text-tertiary)] border-[var(--border-primary)] hover:border-[var(--text-muted)]'
                                             }`}
                                     >
                                         {category.label}
@@ -230,26 +240,25 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
             </section>
 
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold text-gray-700">Mükemmel Eşleşmeler</h2>
-                <span className="text-xs text-gray-500">
+                <h2 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Mükemmel Eşleşmeler</h2>
+                <span className="text-xs text-[var(--text-tertiary)] font-mono">
                     {validFixtures.length} fikstür maçı
                 </span>
             </div>
 
             {validFixtures.length === 0 ? (
-                <div className="rounded-xl border border-gray-100 bg-white p-8 text-center">
-                    <div className="text-4xl mb-3">🔍</div>
-                    <h3 className="text-lg font-medium text-gray-700 mb-2">
+                <div className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-8 text-center">
+                    <h3 className="text-lg font-medium text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)] mb-2">
                         Mükemmel Eşleşme Bulunamadı
                     </h3>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-[var(--text-tertiary)]">
                         {selectedCategoryIds.length === 0
                             ? 'En az bir kategori seçin.'
                             : 'Seçili kategorilerde oranı olan maç yok.'}
                     </p>
                 </div>
             ) : (
-                <div className="space-y-3">
+                <div className="space-y-3 stagger">
                     {validFixtures.map((fixture) => {
                         const isExpanded = expandedFixtureId === fixture.id
                         const result = fixtureResults.get(fixture.id)
@@ -257,27 +266,27 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                         const resultStats = isExpanded ? getResultStats(perfectMatches) : []
 
                         return (
-                            <div key={fixture.id} className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+                            <div key={fixture.id} className="rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] overflow-hidden">
                                 <button
                                     type="button"
                                     onClick={() => setExpandedFixtureId(isExpanded ? null : fixture.id)}
-                                    className="w-full p-4 text-left hover:bg-gray-50 transition"
+                                    className="w-full p-4 text-left hover:bg-[var(--bg-tertiary)] transition-colors"
                                 >
                                     <div className="flex items-center justify-between">
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-xs text-gray-400">
+                                                <span className="text-xs text-[var(--text-muted)] font-mono">
                                                     {formatMatchDateTime(fixture.match_date)}
                                                 </span>
-                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                                                <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-tertiary)]">
                                                     {fixture.league}
                                                 </span>
                                             </div>
-                                            <div className="font-medium text-gray-800">
+                                            <div className="font-medium text-[var(--text-primary)]">
                                                 {fixture.home_team} vs {fixture.away_team}
                                             </div>
                                         </div>
-                                        <div className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                                        <div className={`text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
                                             <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
                                                 <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                                             </svg>
@@ -289,7 +298,7 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                             selectedCategoryIds.includes(c.id) &&
                                             c.fields.some((field) => isValidOdd(fixture[field]))
                                         ).map((category) => (
-                                            <span key={category.id} className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">
+                                            <span key={category.id} className="text-[10px] px-2 py-0.5 rounded bg-[var(--accent-win-bg)] text-[var(--accent-win)] font-medium">
                                                 {category.label}
                                             </span>
                                         ))}
@@ -297,27 +306,31 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                 </button>
 
                                 {isExpanded && (
-                                    <div className="border-t border-gray-100 p-4 bg-gray-50">
+                                    <div className="border-t border-[var(--border-primary)] p-4 bg-[var(--bg-primary)]">
                                         {result?.isLoading ? (
-                                            <div className="text-center text-sm text-gray-500 py-4">Yükleniyor...</div>
+                                            <div className="py-4 space-y-3">
+                                                <div className="skeleton h-4 w-3/4" />
+                                                <div className="skeleton h-4 w-1/2" />
+                                                <div className="skeleton h-4 w-5/6" />
+                                            </div>
                                         ) : (
                                             <>
                                                 <div className="mb-4">
                                                     <div className="flex items-center justify-between mb-2">
-                                                        <h4 className="text-xs font-semibold text-gray-600">Maç Oranları</h4>
-                                                        <Link href={`/analysis/${fixture.id}`} className="text-[11px] px-2 py-1 rounded-md border border-blue-200 bg-white text-blue-600 hover:border-blue-300 hover:text-blue-700 transition">
+                                                        <h4 className="text-xs font-semibold text-[var(--text-secondary)]">Maç Oranları</h4>
+                                                        <Link href={`/analysis/${fixture.id}`} className="text-[11px] px-2 py-1 rounded-md bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] hover:brightness-110 transition-all">
                                                             Analiz
                                                         </Link>
                                                     </div>
                                                     <div className="grid gap-3 md:grid-cols-2">
                                                         {ODDS_CATEGORIES.map((category) => (
-                                                            <div key={category.id} className="bg-white rounded-lg p-3 border border-gray-100">
-                                                                <div className="text-[11px] font-semibold text-gray-500 mb-2">{category.label}</div>
+                                                            <div key={category.id} className="bg-[var(--bg-secondary)] rounded-lg p-3 border border-[var(--border-primary)]">
+                                                                <div className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">{category.label}</div>
                                                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 text-center text-[11px]">
                                                                     {category.fields.map((field) => (
-                                                                        <div key={field} className="rounded-md border border-gray-100 bg-gray-50 p-2">
-                                                                            <div className="text-[10px] text-gray-400 mb-1">{ODDS_LABELS[field] ?? field}</div>
-                                                                            <div className="font-semibold text-gray-700">{formatOdd(fixture[field])}</div>
+                                                                        <div key={field} className="rounded-md bg-[var(--bg-tertiary)] p-2">
+                                                                            <div className="text-[10px] text-[var(--text-muted)] mb-1">{ODDS_LABELS[field] ?? field}</div>
+                                                                            <div className="font-semibold font-mono tabular-nums text-[var(--text-primary)]">{formatOdd(fixture[field])}</div>
                                                                         </div>
                                                                     ))}
                                                                 </div>
@@ -329,24 +342,24 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                                 {perfectMatches.length > 0 && (
                                                     <>
                                                         <div className="mb-4">
-                                                            <h4 className="text-xs font-semibold text-gray-600 mb-2">
+                                                            <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-2">
                                                                 Sonuç Dağılımı ({result?.total ?? perfectMatches.length} maç)
                                                             </h4>
                                                             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                                                                 {resultStats.map((group) => (
-                                                                    <div key={group.id} className="bg-white rounded-lg p-3 border border-gray-100">
-                                                                        <div className="text-[11px] font-semibold text-gray-500 mb-2">{group.label}</div>
+                                                                    <div key={group.id} className="bg-[var(--bg-secondary)] rounded-lg p-3 border border-[var(--border-primary)]">
+                                                                        <div className="text-[11px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">{group.label}</div>
                                                                         {group.total === 0 ? (
-                                                                            <div className="text-[10px] text-gray-400">Veri yok</div>
+                                                                            <div className="text-[10px] text-[var(--text-muted)]">Veri yok</div>
                                                                         ) : (
                                                                             <div className="space-y-1">
                                                                                 {group.items.map((item) => (
                                                                                     <div key={item.key} className="flex items-center gap-2">
-                                                                                        <span className="w-12 text-[10px] text-gray-500">{item.label}</span>
-                                                                                        <div className="flex-1 h-1.5 rounded-full bg-gray-100">
-                                                                                            <div className="h-1.5 rounded-full bg-blue-400" style={{ width: `${item.percent}%` }} />
+                                                                                        <span className="w-12 text-[10px] text-[var(--text-tertiary)]">{item.label}</span>
+                                                                                        <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
+                                                                                            <div className="h-1.5 rounded-full bg-[var(--accent-blue)] transition-all duration-500" style={{ width: `${item.percent}%` }} />
                                                                                         </div>
-                                                                                        <span className="text-[10px] text-gray-500 w-8 text-right">%{item.percent}</span>
+                                                                                        <span className="text-[10px] font-mono text-[var(--text-tertiary)] w-8 text-right">%{item.percent}</span>
                                                                                     </div>
                                                                                 ))}
                                                                             </div>
@@ -357,21 +370,21 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                                         </div>
 
                                                         <div>
-                                                            <h4 className="text-xs font-semibold text-gray-600 mb-2">
+                                                            <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-2">
                                                                 Eşleşen Geçmiş Maçlar
                                                             </h4>
                                                             <div className="max-h-64 overflow-y-auto space-y-2">
                                                                 {perfectMatches.map((pm) => (
-                                                                    <Link key={pm.id} href={`/analysis/${pm.id}`} className="block bg-white rounded-lg p-3 border border-gray-100 hover:border-blue-200 transition">
+                                                                    <Link key={pm.id} href={`/analysis/${pm.id}`} className="block bg-[var(--bg-secondary)] rounded-lg p-3 border border-[var(--border-primary)] hover:border-[var(--border-accent)] hover:shadow-[var(--glow-blue)] transition-all">
                                                                         <div className="flex items-center justify-between">
                                                                             <div>
-                                                                                <div className="text-xs text-gray-400 mb-0.5">{formatMatchDateTime(pm.match_date, { includeYear: true })}</div>
-                                                                                <div className="text-sm font-medium text-gray-700">{pm.home_team} vs {pm.away_team}</div>
-                                                                                <div className="text-[10px] text-gray-400 mt-0.5">{pm.league} · {pm.season}</div>
+                                                                                <div className="text-xs text-[var(--text-muted)] font-mono mb-0.5">{formatMatchDateTime(pm.match_date, { includeYear: true })}</div>
+                                                                                <div className="text-sm font-medium text-[var(--text-primary)]">{pm.home_team} vs {pm.away_team}</div>
+                                                                                <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{pm.league} · {pm.season}</div>
                                                                             </div>
                                                                             <div className="text-right">
-                                                                                {pm.score_ft && <div className="text-lg font-bold text-gray-800">{pm.score_ft}</div>}
-                                                                                {pm.score_ht && <div className="text-[10px] text-gray-400">İY: {pm.score_ht}</div>}
+                                                                                {pm.score_ft && <div className="text-lg font-bold font-mono text-[var(--text-primary)]">{pm.score_ft}</div>}
+                                                                                {pm.score_ht && <div className="text-[10px] text-[var(--text-muted)] font-mono">İY: {pm.score_ht}</div>}
                                                                             </div>
                                                                         </div>
                                                                     </Link>
@@ -383,18 +396,18 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                                                         type="button"
                                                                         disabled={(result?.page ?? 1) <= 1}
                                                                         onClick={() => fetchPerfectMatches(fixture.id, (result?.page ?? 1) - 1)}
-                                                                        className="px-3 py-1 text-[11px] rounded border border-gray-200 bg-white text-gray-600 disabled:opacity-40"
+                                                                        className="px-3 py-1 text-[11px] rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
                                                                     >
                                                                         Önceki
                                                                     </button>
-                                                                    <span className="text-[11px] text-gray-500">
+                                                                    <span className="text-[11px] text-[var(--text-tertiary)] font-mono">
                                                                         {result?.page ?? 1} / {result?.totalPages ?? 1}
                                                                     </span>
                                                                     <button
                                                                         type="button"
                                                                         disabled={(result?.page ?? 1) >= (result?.totalPages ?? 1)}
                                                                         onClick={() => fetchPerfectMatches(fixture.id, (result?.page ?? 1) + 1)}
-                                                                        className="px-3 py-1 text-[11px] rounded border border-gray-200 bg-white text-gray-600 disabled:opacity-40"
+                                                                        className="px-3 py-1 text-[11px] rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
                                                                     >
                                                                         Sonraki
                                                                     </button>
@@ -405,7 +418,7 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                                 )}
 
                                                 {perfectMatches.length === 0 && !result?.isLoading && (
-                                                    <div className="text-center text-sm text-gray-500 py-4">
+                                                    <div className="text-center text-sm text-[var(--text-tertiary)] py-4">
                                                         Bu maç için mükemmel eşleşme bulunamadı.
                                                     </div>
                                                 )}
