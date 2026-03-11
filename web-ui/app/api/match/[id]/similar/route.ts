@@ -33,8 +33,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const tolerancePercent = Math.max(0, Math.min(10, Number(url.searchParams.get('tolerance') ?? '2')))
   const league = url.searchParams.get('league')
   const season = url.searchParams.get('season')
-  const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'))
-  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') ?? '50')))
 
   const { data: baseMatch, error: baseError } = await supabase
     .from('matches')
@@ -54,78 +52,82 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   )
 
   if (availableCategories.length === 0) {
-    return NextResponse.json({ totalCategories: 0, matches: [], total: 0, page, limit, totalPages: 0 })
+    return NextResponse.json({ totalCategories: 0, matches: [], total: 0 })
   }
 
-  let query = supabase
-    .from('matches')
-    .select(MATCH_SELECT, { count: 'exact' })
-    .not('score_ft', 'is', null)
-    .neq('id', matchIdNumber)
+  // Supabase tek sorguda max 1000 satır döner — loop ile tamamını çek
+  // Not: query builder her iterasyonda yeniden oluşturulmalı (mutability sorunu)
+  const BATCH_SIZE = 1000
+  const allData: MatchWithScores[] = []
+  const seen = new Set<number>()
+  let offset = 0
 
-  if (toleranceValue === 0) {
-    // Exact match: use OR across all categories (same logic as perfect match API)
-    const orParts: string[] = []
-    for (const category of availableCategories) {
-      const conditions: string[] = []
-      for (const field of category.fields) {
-        const value = base[field]
-        if (isValidOdd(value)) {
-          conditions.push(`${field}.eq.${value}`)
+  while (true) {
+    // Her iterasyonda base query'den yeni bir chain oluştur
+    let pageQuery = supabase
+      .from('matches')
+      .select(MATCH_SELECT)
+      .not('score_ft', 'is', null)
+      .neq('id', matchIdNumber)
+
+    // Aynı OR filtresini uygula
+    if (toleranceValue === 0) {
+      const orParts: string[] = []
+      for (const category of availableCategories) {
+        const conditions: string[] = []
+        for (const field of category.fields) {
+          const value = base[field]
+          if (isValidOdd(value)) {
+            conditions.push(`${field}.eq.${value}`)
+          }
+        }
+        if (conditions.length > 0) {
+          orParts.push(conditions.length === 1 ? conditions[0] : `and(${conditions.join(',')})`)
         }
       }
-      if (conditions.length > 0) {
-        orParts.push(conditions.length === 1 ? conditions[0] : `and(${conditions.join(',')})`)
-      }
-    }
-
-    if (orParts.length === 0) {
-      return NextResponse.json({ totalCategories: availableCategories.length, matches: [], total: 0, page, limit, totalPages: 0 })
-    }
-
-    query = query.or(orParts.join(','))
-  } else {
-    // Tolerance-based: OR across all categories with range filters
-    const orParts: string[] = []
-    for (const category of availableCategories) {
-      const conditions: string[] = []
-      for (const field of category.fields) {
-        const value = base[field]
-        if (isValidOdd(value) && value !== null) {
-          const toleranceAbs = Math.max(value * toleranceValue, toleranceValue)
-          conditions.push(`${field}.gte.${value - toleranceAbs}`, `${field}.lte.${value + toleranceAbs}`)
+      if (orParts.length > 0) pageQuery = pageQuery.or(orParts.join(','))
+    } else {
+      const orParts: string[] = []
+      for (const category of availableCategories) {
+        const conditions: string[] = []
+        for (const field of category.fields) {
+          const value = base[field]
+          if (isValidOdd(value) && value !== null) {
+            const toleranceAbs = Math.max(value * toleranceValue, toleranceValue)
+            conditions.push(`${field}.gte.${value - toleranceAbs}`, `${field}.lte.${value + toleranceAbs}`)
+          }
+        }
+        if (conditions.length > 0) {
+          orParts.push(conditions.length === 1 ? conditions[0] : `and(${conditions.join(',')})`)
         }
       }
-      if (conditions.length > 0) {
-        orParts.push(conditions.length === 1 ? conditions[0] : `and(${conditions.join(',')})`)
+      if (orParts.length > 0) pageQuery = pageQuery.or(orParts.join(','))
+    }
+
+    if (league) pageQuery = pageQuery.eq('league', league)
+    if (season) pageQuery = pageQuery.eq('season', season)
+
+    const { data: batch, error: batchError } = await pageQuery
+      .order('match_date', { ascending: false })
+      .range(offset, offset + BATCH_SIZE - 1)
+
+    if (batchError) {
+      return NextResponse.json({ error: 'Benzer maçlar alınamadı.' }, { status: 500 })
+    }
+
+    const rows = (batch ?? []) as unknown as MatchWithScores[]
+    for (const row of rows) {
+      if (!seen.has(row.id)) {
+        seen.add(row.id)
+        allData.push(row)
       }
     }
 
-    if (orParts.length === 0) {
-      return NextResponse.json({ totalCategories: availableCategories.length, matches: [], total: 0, page, limit, totalPages: 0 })
-    }
-
-    query = query.or(orParts.join(','))
+    if (rows.length < BATCH_SIZE) break
+    offset += BATCH_SIZE
   }
 
-  if (league) {
-    query = query.eq('league', league)
-  }
-  if (season) {
-    query = query.eq('season', season)
-  }
-
-  // Fetch more than needed for client-side multi-category matching
-  const fetchLimit = toleranceValue === 0 ? limit * 2 : limit * 3
-  const { data, error, count } = await query
-    .order('match_date', { ascending: false })
-    .range(0, fetchLimit - 1)
-
-  if (error) {
-    return NextResponse.json({ error: 'Benzer maçlar alınamadı.' }, { status: 500 })
-  }
-
-  const candidates = (data ?? []) as unknown as MatchWithScores[]
+  const candidates = allData
 
   // Client-side: check all categories and calculate match counts
   const isSimilar = (baseVal: number, candidateVal: number) => {
@@ -173,18 +175,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return new Date(b.match_date).getTime() - new Date(a.match_date).getTime()
     })
 
-  // Paginate the results
-  const from = (page - 1) * limit
-  const paginatedMatches = similarMatches.slice(from, from + limit)
-  const total = similarMatches.length
-  const totalPages = Math.ceil(total / limit)
-
   return NextResponse.json({
     totalCategories: availableCategories.length,
-    matches: paginatedMatches,
-    total,
-    page,
-    limit,
-    totalPages,
+    matches: similarMatches,
+    total: similarMatches.length,
   })
 }

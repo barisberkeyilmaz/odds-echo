@@ -261,7 +261,7 @@ export const MatchOddsTable = ({
 
   // Desktop renders
   const renderDesktopNonVirtual = () => (
-    <div className="hidden sm:block overflow-x-auto overflow-y-auto max-h-[600px] rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] card-glow">
+    <div className="hidden sm:block overflow-x-auto overflow-y-auto max-h-[1200px] rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] card-glow">
       <table className="min-w-full text-xs">
         {tableHeader}
         <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -278,7 +278,7 @@ export const MatchOddsTable = ({
   const renderDesktopVirtual = () => (
     <div
       ref={parentRef}
-      className="hidden sm:block overflow-x-auto overflow-y-auto max-h-[70vh] sm:max-h-[600px] rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] card-glow"
+      className="hidden sm:block overflow-x-auto overflow-y-auto max-h-[70vh] sm:max-h-[1200px] rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] card-glow"
     >
       <table className="min-w-full text-xs">
         {tableHeader}
