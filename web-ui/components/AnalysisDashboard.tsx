@@ -22,7 +22,7 @@ const MAX_TOLERANCE = 5
 const TOLERANCE_STEP = 0.1
 const DEFAULT_TOLERANCE = 2
 const ALL_OPTION = 'Tümü'
-const PAGE_SIZE = 50
+// Tüm sonuçlar tek seferde yüklenir, pagination yok
 
 const RESULT_GROUPS: {
   id: string
@@ -50,8 +50,6 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
   const [selectedMinMatchCount, setSelectedMinMatchCount] = useState<number | null>(null)
   const [similarMatches, setSimilarMatches] = useState<SimilarMatch[]>([])
   const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(0)
   const [totalCategories, setTotalCategories] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -92,13 +90,11 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
     return options
   }, [availableCategories.length])
 
-  const fetchSimilarMatches = useCallback(async (currentPage: number) => {
+  const fetchSimilarMatches = useCallback(async () => {
     setIsLoading(true)
     try {
       const params = new URLSearchParams()
       params.set('tolerance', String(tolerancePercent))
-      params.set('page', String(currentPage))
-      params.set('limit', String(PAGE_SIZE))
       if (selectedLeague !== ALL_OPTION) params.set('league', selectedLeague)
       if (selectedSeason !== ALL_OPTION) params.set('season', selectedSeason)
 
@@ -113,29 +109,21 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
 
       setSimilarMatches(matches)
       setTotal(data.total ?? 0)
-      setTotalPages(data.totalPages ?? 0)
       setTotalCategories(data.totalCategories ?? 0)
     } catch {
       setSimilarMatches([])
       setTotal(0)
-      setTotalPages(0)
     } finally {
       setIsLoading(false)
     }
   }, [match.id, tolerancePercent, selectedLeague, selectedSeason])
 
   useEffect(() => {
-    setPage(1)
     const timer = setTimeout(() => {
-      fetchSimilarMatches(1)
+      fetchSimilarMatches()
     }, 300)
     return () => clearTimeout(timer)
   }, [fetchSimilarMatches])
-
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage)
-    fetchSimilarMatches(newPage)
-  }
 
   const filteredMatches = useMemo(() => {
     let filtered = similarMatches
@@ -449,28 +437,6 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
         ) : (
           <>
             <MatchOddsTable matches={filteredMatches} totalCategories={totalCategories || availableCategories.length} />
-
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-3 mt-4">
-                <button
-                  type="button"
-                  disabled={page <= 1}
-                  onClick={() => handlePageChange(page - 1)}
-                  className="px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 text-xs rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
-                >
-                  Önceki
-                </button>
-                <span className="text-xs text-[var(--text-tertiary)] font-mono">{page} / {totalPages}</span>
-                <button
-                  type="button"
-                  disabled={page >= totalPages}
-                  onClick={() => handlePageChange(page + 1)}
-                  className="px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 text-xs rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
-                >
-                  Sonraki
-                </button>
-              </div>
-            )}
           </>
         )}
       </section>
