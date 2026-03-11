@@ -140,6 +140,7 @@ CREATE TABLE matches (
 - [x] Queue onarım ve durum senkronu (`repair_queue.py`).
 - [x] Telegram perfect-match görsel bildirimi.
 - [x] Web UI: Fikstür, oran arama, benzerlik, analiz ve perfect-match sayfaları.
+- [x] Web UI: Mobile-first responsive (bottom tab bar, kart görünümü, kategori tabları, bottom sheet takvim, touch target'lar).
 
 ---
 
@@ -152,6 +153,18 @@ CREATE TABLE matches (
 ---
 
 ## 8. Changelog
+**2026-03-11** — **Mobile-First Responsive Overhaul**
+  - **Why:** Tüm ekranların mobilde (375-414px) rahat kullanılmasını sağlamak. Bahis platformlarında trafik ağırlıklı mobilden gelir.
+  - **Scope:** `web-ui/components/Header.tsx`, `web-ui/components/FixtureTable.tsx`, `web-ui/components/MatchOddsTable.tsx`, `web-ui/components/OddsSearchDashboard.tsx`, `web-ui/components/FixtureDatePicker.tsx`, `web-ui/components/AnalysisDashboard.tsx`, `web-ui/components/PerfectMatchDashboard.tsx`, `web-ui/components/SearchableSelect.tsx`, `web-ui/app/globals.css`, 5× page layout dosyaları, `web-ui/DESIGN_GUIDE.md`
+  - **Notes:**
+    - Header: Mobilde bottom tab bar (3 ikon+label), masaüstünde üst nav korundu
+    - FixtureTable: Mobilde kart görünümü (tablo yerine), filtre butonları büyütüldü
+    - MatchOddsTable: Mobilde kategori tab sistemi (ODDS_CATEGORIES bazlı), sticky header/column düzeltmeleri
+    - OddsSearchDashboard: Açılır/kapanır sidebar, mobil tab-based tablo
+    - FixtureDatePicker: 3 gün strip + bottom sheet takvim
+    - Tüm bileşenler: 44px+ touch target'lar, responsive font boyutları
+    - DESIGN_GUIDE.md: Detaylı mobil-first responsive kuralları eklendi
+
 **2026-01-20** — **LiveData Fikstür Senkronu & Monitoring Worker**
   - **Why:** Günlük fikstürleri kuyruğa almak ve skorları otomatik takip etmek.
   - **Scope:** `livedata_update_fixtures.py`, `monitoring_worker.py`, `queue_manager.py`

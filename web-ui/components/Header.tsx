@@ -12,17 +12,16 @@ const NAV_ITEMS = [
             <line x1="3" y1="10" x2="21" y2="10" />
         </svg>
     )},
-    { href: '/odds-search', label: 'Oran Arama', icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-    )},
-    { href: '/perfect-match', label: 'Mükemmel Eşleşme', icon: (
+{ href: '/perfect-match', label: 'Mükemmel Eşleşme', shortLabel: 'Eşleşme', icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
             <circle cx="12" cy="12" r="6" />
             <circle cx="12" cy="12" r="2" />
+        </svg>
+    )},
+    { href: '/surprise-analysis', label: 'Sürpriz Analiz', shortLabel: 'Sürpriz', icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
         </svg>
     )},
 ]
@@ -82,7 +81,7 @@ export default function Header({ totalMatches }: { totalMatches?: number }) {
                         }`}
                     >
                         {item.icon}
-                        <span>{item.label}</span>
+                        <span>{item.shortLabel || item.label}</span>
                     </Link>
                 ))}
             </nav>
