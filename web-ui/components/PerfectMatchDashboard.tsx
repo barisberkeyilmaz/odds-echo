@@ -292,7 +292,7 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                         key={category.id}
                                         type="button"
                                         onClick={() => toggleCategory(category.id)}
-                                        className={`rounded-md border px-3 py-1 text-[11px] font-medium transition-all ${isSelected
+                                        className={`rounded-md border px-3 py-2 text-xs sm:px-3 sm:py-1 sm:text-[11px] font-medium transition-all ${isSelected
                                             ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] border-[var(--accent-blue)]'
                                             : 'bg-transparent text-[var(--text-tertiary)] border-[var(--border-primary)] hover:border-[var(--text-muted)]'
                                             }`}
@@ -362,7 +362,7 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] font-mono font-medium">
+                                            <span className="text-xs sm:text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] font-mono font-medium">
                                                 {perfectCounts[fixture.id]?.total ?? 0} eşleşme
                                             </span>
                                             <div className={`text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
@@ -453,7 +453,7 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                                             <h4 className="text-xs font-semibold text-[var(--text-secondary)] mb-2">
                                                                 Eşleşen Geçmiş Maçlar
                                                             </h4>
-                                                            <div className="max-h-96 overflow-y-auto space-y-2">
+                                                            <div className="max-h-[60vh] sm:max-h-96 overflow-y-auto space-y-2">
                                                                 {perfectMatches.map((pm) => (
                                                                     <Link key={pm.id} href={`/analysis/${pm.id}`} className="block bg-[var(--bg-secondary)] rounded-lg p-3 border border-[var(--border-primary)] hover:border-[var(--border-accent)] hover:shadow-[var(--glow-blue)] transition-all">
                                                                         <div className="flex items-center justify-between">
@@ -463,11 +463,11 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                                                                 <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{pm.league} · {pm.season}</div>
                                                                                 {/* Matched category badges */}
                                                                                 <div className="flex flex-wrap gap-1 mt-1.5">
-                                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] font-semibold">
+                                                                                    <span className="text-[11px] px-2 py-1 sm:text-[9px] sm:px-1.5 sm:py-0.5 rounded bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] font-semibold">
                                                                                         {pm.matchedCategoryIds.length}/{selectedCategoryIds.length} kategori
                                                                                     </span>
                                                                                     {pm.matchedCategoryIds.map((catId) => (
-                                                                                        <span key={catId} className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-win-bg)] text-[var(--accent-win)]">
+                                                                                        <span key={catId} className="text-[11px] px-2 py-1 sm:text-[9px] sm:px-1.5 sm:py-0.5 rounded bg-[var(--accent-win-bg)] text-[var(--accent-win)]">
                                                                                             {getCategoryLabel(catId)}
                                                                                         </span>
                                                                                     ))}
@@ -487,7 +487,7 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                                                         type="button"
                                                                         disabled={(result?.page ?? 1) <= 1}
                                                                         onClick={() => fetchPerfectMatches(fixture.id, (result?.page ?? 1) - 1)}
-                                                                        className="px-3 py-1 text-[11px] rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
+                                                                        className="px-3 py-2.5 sm:py-1 min-h-[44px] sm:min-h-0 text-xs sm:text-[11px] rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
                                                                     >
                                                                         Önceki
                                                                     </button>
@@ -498,7 +498,7 @@ export default function PerfectMatchDashboard({ fixtures }: PerfectMatchDashboar
                                                                         type="button"
                                                                         disabled={(result?.page ?? 1) >= (result?.totalPages ?? 1)}
                                                                         onClick={() => fetchPerfectMatches(fixture.id, (result?.page ?? 1) + 1)}
-                                                                        className="px-3 py-1 text-[11px] rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
+                                                                        className="px-3 py-2.5 sm:py-1 min-h-[44px] sm:min-h-0 text-xs sm:text-[11px] rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
                                                                     >
                                                                         Sonraki
                                                                     </button>

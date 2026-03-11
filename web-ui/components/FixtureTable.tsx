@@ -246,7 +246,7 @@ export default function FixtureTable({ matches }: FixtureTableProps) {
             <button
               type="button"
               onClick={handleClearAll}
-              className="text-[11px] text-[var(--text-muted)] hover:text-[var(--accent-blue)] transition-colors"
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--accent-blue)] transition-colors"
             >
               Filtreleri temizle
             </button>
@@ -292,7 +292,7 @@ export default function FixtureTable({ matches }: FixtureTableProps) {
                     key={key}
                     type="button"
                     onClick={() => removeLeague(key)}
-                    className="rounded-md border px-2 py-1 text-[11px] font-medium bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] border-[var(--accent-blue)] hover:brightness-110 transition-all"
+                    className="rounded-md border px-3 py-1.5 text-xs sm:px-2 sm:py-1 sm:text-[11px] font-medium bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] border-[var(--accent-blue)] hover:brightness-110 transition-all"
                   >
                     {info?.display ?? key} ×
                   </button>
@@ -310,7 +310,7 @@ export default function FixtureTable({ matches }: FixtureTableProps) {
                 key={opt.value}
                 type="button"
                 onClick={() => setShowPlayed(opt.value)}
-                className={`px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                className={`px-3 py-2 text-xs sm:py-1.5 sm:text-[11px] font-medium transition-colors ${
                   showPlayed === opt.value
                     ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)]'
                     : 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
@@ -321,13 +321,13 @@ export default function FixtureTable({ matches }: FixtureTableProps) {
             ))}
           </div>
 
-          <div className="flex rounded-md border border-[var(--border-primary)] overflow-hidden">
+          <div className="flex flex-wrap rounded-md border border-[var(--border-primary)] overflow-hidden">
             {TIME_SLOTS.map((slot) => (
               <button
                 key={slot.key}
                 type="button"
                 onClick={() => toggleTimeSlot(slot.key)}
-                className={`px-2.5 py-1.5 text-[11px] font-medium font-mono tabular-nums transition-colors ${
+                className={`px-2.5 py-2 text-xs sm:py-1.5 sm:text-[11px] font-medium font-mono tabular-nums transition-colors ${
                   timeSlots.has(slot.key)
                     ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)]'
                     : 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
@@ -372,8 +372,8 @@ export default function FixtureTable({ matches }: FixtureTableProps) {
               <span className="text-[11px] text-[var(--text-muted)] font-mono">{group.matches.length} maç</span>
             </div>
 
-            {/* Matches table */}
-            <div className="overflow-x-auto">
+            {/* Desktop: Matches table */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="min-w-full text-sm whitespace-nowrap table-fixed">
                 <colgroup>
                   <col className="w-[70px]" />
@@ -433,6 +433,54 @@ export default function FixtureTable({ matches }: FixtureTableProps) {
                   })}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile: Card view */}
+            <div className="block sm:hidden divide-y divide-[var(--border-subtle)]">
+              {group.matches.map((match) => {
+                const outcomeKeys = getOutcomeKeys(match)
+                const ms1Hit = outcomeKeys.has('ms_1')
+                const msxHit = outcomeKeys.has('ms_x')
+                const ms2Hit = outcomeKeys.has('ms_2')
+                const scoreLabel = match.score_ht
+                  ? `${match.score_ft ?? '-'} (İY ${match.score_ht})`
+                  : match.score_ft ?? '-'
+
+                return (
+                  <div key={match.id} className="p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[var(--text-muted)] font-mono" suppressHydrationWarning>
+                        {formatMatchTime(match.match_date)}
+                      </span>
+                      {scoreLabel !== '-' && (
+                        <span className="text-xs text-[var(--text-tertiary)] font-mono">{scoreLabel}</span>
+                      )}
+                    </div>
+                    <div className="text-sm font-semibold text-[var(--text-primary)]">
+                      {match.home_team} vs {match.away_team}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex gap-2 font-mono tabular-nums text-sm">
+                        <span className={`px-2 py-1 rounded ${ms1Hit ? 'text-[var(--accent-win)] bg-[var(--accent-win-bg)]' : 'text-[var(--text-primary)]'}`}>
+                          1: {formatOdd(match.ms_1)}
+                        </span>
+                        <span className={`px-2 py-1 rounded ${msxHit ? 'text-[var(--accent-win)] bg-[var(--accent-win-bg)]' : 'text-[var(--text-primary)]'}`}>
+                          X: {formatOdd(match.ms_x)}
+                        </span>
+                        <span className={`px-2 py-1 rounded ${ms2Hit ? 'text-[var(--accent-win)] bg-[var(--accent-win-bg)]' : 'text-[var(--text-primary)]'}`}>
+                          2: {formatOdd(match.ms_2)}
+                        </span>
+                      </div>
+                      <Link
+                        href={`/analysis/${match.id}`}
+                        className="inline-flex items-center min-h-[44px] px-3 rounded-md bg-[var(--accent-blue-bg)] text-xs font-semibold text-[var(--accent-blue)] hover:brightness-110 transition-all shrink-0"
+                      >
+                        Analiz →
+                      </Link>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </section>
         ))}

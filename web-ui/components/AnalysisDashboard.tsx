@@ -245,7 +245,7 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
         <div className="relative z-20 rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] p-4 card-glow overflow-visible">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">Filtreler</h3>
-            <button type="button" onClick={resetFilters} className="text-[11px] text-[var(--accent-blue)] hover:brightness-110">
+            <button type="button" onClick={resetFilters} className="text-xs text-[var(--accent-blue)] hover:brightness-110">
               Filtreleri temizle
             </button>
           </div>
@@ -286,7 +286,7 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                 onChange={(event) => setTolerancePercent(Number(event.target.value))}
                 className="mt-2 w-full"
               />
-              <div className="mt-1 flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+              <div className="mt-1 flex items-center justify-between text-xs sm:text-[10px] text-[var(--text-muted)]">
                 <span>%0</span>
                 <span>%5</span>
               </div>
@@ -307,7 +307,7 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                         key={category.id}
                         type="button"
                         onClick={() => toggleCategory(category.id)}
-                        className={`rounded-md border px-3 py-1 text-[11px] font-medium transition-all ${
+                        className={`rounded-md border px-3 py-2 text-xs sm:px-3 sm:py-1 sm:text-[11px] font-medium transition-all ${
                           isSelected
                             ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] border-[var(--accent-blue)]'
                             : 'bg-transparent text-[var(--text-tertiary)] border-[var(--border-primary)] hover:border-[var(--text-muted)]'
@@ -332,7 +332,7 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                   <button
                     type="button"
                     onClick={() => setSelectedMinMatchCount(null)}
-                    className={`rounded-md border px-3 py-1 text-[11px] font-medium transition-all ${
+                    className={`rounded-md border px-3 py-2 text-xs sm:px-3 sm:py-1 sm:text-[11px] font-medium transition-all ${
                       selectedMinMatchCount === null
                         ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] border-[var(--accent-blue)]'
                         : 'bg-transparent text-[var(--text-tertiary)] border-[var(--border-primary)] hover:border-[var(--text-muted)]'
@@ -347,7 +347,7 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                         key={count}
                         type="button"
                         onClick={() => setSelectedMinMatchCount(count)}
-                        className={`rounded-md border px-3 py-1 text-[11px] font-medium transition-all ${
+                        className={`rounded-md border px-3 py-2 text-xs sm:px-3 sm:py-1 sm:text-[11px] font-medium transition-all ${
                           isSelected
                             ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] border-[var(--accent-blue)]'
                             : 'bg-transparent text-[var(--text-tertiary)] border-[var(--border-primary)] hover:border-[var(--text-muted)]'
@@ -375,7 +375,7 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
               <div className="space-y-2">
                 {categoryStats.map((stat) => (
                   <div key={stat.id} className="flex items-center gap-3">
-                    <span className="w-24 text-[11px] text-[var(--text-tertiary)]">{stat.label}</span>
+                    <span className="w-20 sm:w-24 text-[11px] text-[var(--text-tertiary)]">{stat.label}</span>
                     <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
                       <div className="h-1.5 rounded-full bg-[var(--accent-win)] transition-all duration-500" style={{ width: `${stat.barWidth}%` }} />
                     </div>
@@ -408,7 +408,7 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                       <div className="space-y-2">
                         {group.items.map((item) => (
                           <div key={item.key} className="flex items-center gap-3">
-                            <span className="w-16 text-[11px] text-[var(--text-tertiary)]">{item.label}</span>
+                            <span className="w-14 sm:w-16 text-[11px] text-[var(--text-tertiary)]">{item.label}</span>
                             <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
                               <div className="h-1.5 rounded-full bg-[var(--accent-blue)] transition-all duration-500" style={{ width: `${item.percent}%` }} />
                             </div>
@@ -456,7 +456,7 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                   type="button"
                   disabled={page <= 1}
                   onClick={() => handlePageChange(page - 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
+                  className="px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 text-xs rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
                 >
                   Önceki
                 </button>
@@ -465,7 +465,7 @@ export default function AnalysisDashboard({ match }: AnalysisDashboardProps) {
                   type="button"
                   disabled={page >= totalPages}
                   onClick={() => handlePageChange(page + 1)}
-                  className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
+                  className="px-3 py-2.5 sm:py-1.5 min-h-[44px] sm:min-h-0 text-xs rounded-md border border-[var(--border-primary)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-40 transition-colors"
                 >
                   Sonraki
                 </button>

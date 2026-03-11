@@ -38,10 +38,12 @@ function InlineCalendar({
   selectedDateKey,
   availableSet,
   onSelect,
+  isMobile,
 }: {
   selectedDateKey: string
   availableSet: Set<string>
   onSelect: (dateKey: string) => void
+  isMobile?: boolean
 }) {
   const selectedDate = fromDateKey(selectedDateKey)
   const [viewMonth, setViewMonth] = useState(selectedDate.getMonth())
@@ -87,22 +89,22 @@ function InlineCalendar({
   }
 
   return (
-    <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl p-3 w-[280px] shadow-lg shadow-black/30">
+    <div className={`bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl p-3 shadow-lg shadow-black/30 ${isMobile ? 'w-full' : 'w-[280px]'}`}>
       <div className="flex items-center justify-between mb-3">
-        <button type="button" onClick={goToPrevMonth} className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors text-xs">
+        <button type="button" onClick={goToPrevMonth} className="w-10 h-10 sm:w-7 sm:h-7 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors text-xs">
           ←
         </button>
         <span className="text-xs font-semibold text-[var(--text-primary)] font-[family-name:var(--font-space-grotesk)]">
           {TR_MONTH_NAMES[viewMonth]} {viewYear}
         </span>
-        <button type="button" onClick={goToNextMonth} className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors text-xs">
+        <button type="button" onClick={goToNextMonth} className="w-10 h-10 sm:w-7 sm:h-7 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors text-xs">
           →
         </button>
       </div>
 
       <div className="grid grid-cols-7 mb-1">
         {TR_DAY_NAMES.map((name) => (
-          <div key={name} className="text-center text-[9px] font-medium text-[var(--text-muted)] py-0.5">
+          <div key={name} className="text-center text-xs sm:text-[9px] font-medium text-[var(--text-muted)] py-0.5">
             {name}
           </div>
         ))}
@@ -120,7 +122,7 @@ function InlineCalendar({
               type="button"
               onClick={() => onSelect(day.dateKey)}
               className={`
-                relative w-full aspect-square flex items-center justify-center text-[11px] font-medium rounded-md transition-colors
+                relative w-full aspect-square flex items-center justify-center text-sm sm:text-[11px] font-medium rounded-md transition-colors
                 ${isSelected
                   ? 'bg-[var(--accent-blue)] text-white'
                   : isToday
@@ -165,7 +167,7 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
     setCalendarOpen(false)
   }
 
-  // Close calendar on outside click
+  // Close calendar on outside click (desktop only)
   useEffect(() => {
     if (!calendarOpen) return
     const handler = (e: MouseEvent) => {
@@ -178,13 +180,13 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
   }, [calendarOpen])
 
   return (
-    <div className="relative z-30 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] px-3 py-2.5 mb-6 card-glow">
-      <div className="flex items-center gap-2">
+    <div className="relative z-30 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] px-2 sm:px-3 py-2.5 mb-6 card-glow">
+      <div className="flex items-center gap-1 sm:gap-2">
         {/* Prev button */}
         <button
           type="button"
           onClick={() => goToDateKey(addDays(selectedDateKey, -1))}
-          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+          className="shrink-0 w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
           title="Önceki gün"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -192,12 +194,13 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
           </svg>
         </button>
 
-        {/* 5-day strip */}
+        {/* 5-day strip — hide first and last on mobile (3 days) */}
         <div className="flex-1 flex items-center justify-center gap-1">
-          {stripDays.map((dateKey) => {
+          {stripDays.map((dateKey, index) => {
             const isSelected = dateKey === selectedDateKey
             const isToday = dateKey === todayKey
             const isAvailable = availableSet.has(dateKey)
+            const hideOnMobile = index === 0 || index === 4
 
             return (
               <button
@@ -205,7 +208,8 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
                 type="button"
                 onClick={() => goToDateKey(dateKey)}
                 className={`
-                  relative flex flex-col items-center px-3 py-1.5 rounded-lg transition-colors min-w-[52px]
+                  relative flex flex-col items-center px-2 py-2.5 sm:px-3 sm:py-1.5 rounded-lg transition-colors min-w-[48px] sm:min-w-[52px]
+                  ${hideOnMobile ? 'hidden sm:flex' : ''}
                   ${isSelected
                     ? 'bg-[var(--accent-blue)] text-white'
                     : isToday
@@ -236,7 +240,7 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
           type="button"
           onClick={() => goToDateKey(todayKey)}
           disabled={selectedDateKey === todayKey}
-          className="shrink-0 px-2.5 py-1.5 rounded-md text-[10px] font-semibold border border-[var(--border-primary)] text-[var(--accent-blue)] hover:bg-[var(--accent-blue-bg)] disabled:opacity-30 disabled:cursor-default transition-colors"
+          className="shrink-0 px-2 py-2 sm:px-2.5 sm:py-1.5 rounded-md text-[11px] sm:text-[10px] font-semibold border border-[var(--border-primary)] text-[var(--accent-blue)] hover:bg-[var(--accent-blue-bg)] disabled:opacity-30 disabled:cursor-default transition-colors"
           title="Bugüne git"
         >
           Bugün
@@ -246,7 +250,7 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
         <button
           type="button"
           onClick={() => goToDateKey(addDays(selectedDateKey, 1))}
-          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+          className="shrink-0 w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
           title="Sonraki gün"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -259,7 +263,7 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
           <button
             type="button"
             onClick={() => setCalendarOpen(!calendarOpen)}
-            className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-md transition-colors ${
+            className={`shrink-0 w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center rounded-md transition-colors ${
               calendarOpen
                 ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)]'
                 : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
@@ -274,8 +278,9 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
             </svg>
           </button>
 
+          {/* Desktop calendar dropdown */}
           {calendarOpen && (
-            <div className="absolute right-0 top-full mt-2 z-50">
+            <div className="hidden sm:block absolute right-0 top-full mt-2 z-50">
               <InlineCalendar
                 selectedDateKey={selectedDateKey}
                 availableSet={availableSet}
@@ -285,6 +290,24 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
           )}
         </div>
       </div>
+
+      {/* Mobile calendar bottom sheet */}
+      {calendarOpen && (
+        <div className="sm:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setCalendarOpen(false)} />
+          <div className="absolute bottom-0 inset-x-0 bottom-sheet-enter" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            <div className="bg-[var(--bg-primary)] rounded-t-2xl p-4">
+              <div className="w-10 h-1 bg-[var(--bg-tertiary)] rounded-full mx-auto mb-4" />
+              <InlineCalendar
+                selectedDateKey={selectedDateKey}
+                availableSet={availableSet}
+                onSelect={goToDateKey}
+                isMobile
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

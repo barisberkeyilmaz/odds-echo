@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -67,6 +67,13 @@ const getMatchBadgeClass = (count: number, total: number) => {
 const ROW_HEIGHT = 60
 const VIRTUALIZATION_THRESHOLD = 50
 
+// Mobile tab definitions using ODDS_CATEGORIES
+const MOBILE_TABS = ODDS_CATEGORIES.map((cat) => ({
+  id: cat.id,
+  label: cat.id === 'ms' ? 'MS 1/X/2' : cat.id === 'iyms' ? 'İY/MS' : cat.id === 'au15' ? '1.5 A/Ü' : cat.id === 'au25' ? '2.5 A/Ü' : cat.id === 'kg' ? 'KG' : 'TG',
+  fields: cat.fields,
+}))
+
 export const MatchOddsTable = ({
   matches,
   totalCategories,
@@ -76,6 +83,7 @@ export const MatchOddsTable = ({
 }) => {
   const parentRef = useRef<HTMLDivElement>(null)
   const useVirtual = matches.length > VIRTUALIZATION_THRESHOLD
+  const [activeTab, setActiveTab] = useState('ms')
 
   const virtualizer = useVirtualizer({
     count: matches.length,
@@ -85,11 +93,13 @@ export const MatchOddsTable = ({
     enabled: useVirtual,
   })
 
+  const activeTabData = MOBILE_TABS.find((t) => t.id === activeTab) ?? MOBILE_TABS[0]
+
   const renderRow = (match: OddsTableMatch) => {
     const outcomeKeys = getOutcomeKeys(match)
     return (
       <>
-        <td className="px-3 py-2">
+        <td className="px-3 py-2 sticky left-0 z-[5] bg-[var(--bg-secondary)]">
           <div className="flex items-start justify-between gap-3">
             <div>
               <Link href={`/analysis/${match.id}`} className="font-semibold text-[var(--text-primary)] hover:text-[var(--accent-blue)] transition-colors">
@@ -111,7 +121,7 @@ export const MatchOddsTable = ({
           {match.matchedCategoryIds.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-1">
               {match.matchedCategoryIds.map((categoryId) => (
-                <span key={categoryId} className="rounded-full bg-[var(--bg-tertiary)] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)]">
+                <span key={categoryId} className="rounded-full bg-[var(--accent-blue-bg)] px-2 py-0.5 text-[10px] text-[var(--accent-blue)]">
                   {CATEGORY_LABELS[categoryId] ?? categoryId}
                 </span>
               ))}
@@ -121,10 +131,10 @@ export const MatchOddsTable = ({
         <td className="px-3 py-2 text-[var(--text-secondary)]" suppressHydrationWarning>
           {formatMatchDateTime(match.match_date, { includeYear: true })}
         </td>
-        <td className="px-3 py-2 text-center font-mono">
+        <td className="px-3 py-2 text-center font-mono text-[11px]">
           <div className="text-[var(--text-primary)]">{match.score_ft ?? '-'}</div>
           {match.score_ht ? (
-            <div className="text-[10px] text-[var(--text-muted)]">{`İY: ${match.score_ht}`}</div>
+            <div className="text-[9px] text-[var(--text-muted)]">{`İY: ${match.score_ht}`}</div>
           ) : null}
         </td>
         {ODDS_COLUMNS.map((field) => (
@@ -142,18 +152,18 @@ export const MatchOddsTable = ({
   const tableHeader = (
     <thead className="bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] text-xs uppercase tracking-wider sticky top-0 z-10">
       <tr>
-        <th rowSpan={2} className="px-3 py-2 text-left font-medium">Maç</th>
-        <th rowSpan={2} className="px-3 py-2 text-left font-medium">Tarih</th>
-        <th rowSpan={2} className="px-3 py-2 text-center font-medium">Skor</th>
+        <th rowSpan={2} className="px-3 py-2 text-left font-medium sticky left-0 top-0 z-20 bg-[var(--bg-tertiary)]">Maç</th>
+        <th rowSpan={2} className="px-3 py-2 text-left font-medium sticky top-0 bg-[var(--bg-tertiary)]">Tarih</th>
+        <th rowSpan={2} className="px-3 py-2 text-center font-medium sticky top-0 bg-[var(--bg-tertiary)]">Skor</th>
         {ODDS_GROUPS.map((group) => (
-          <th key={group.id} colSpan={group.fields.length} className="px-3 py-2 text-center font-medium">
+          <th key={group.id} colSpan={group.fields.length} className="px-3 py-2 text-center font-medium sticky top-0 bg-[var(--bg-tertiary)]">
             {group.label}
           </th>
         ))}
       </tr>
       <tr>
         {ODDS_COLUMNS.map((field) => (
-          <th key={field} className="px-3 py-2 text-center font-medium">
+          <th key={field} className="px-3 py-2 text-center font-medium sticky top-0 bg-[var(--bg-tertiary)]">
             {ODDS_LABELS[field]}
           </th>
         ))}
@@ -161,27 +171,114 @@ export const MatchOddsTable = ({
     </thead>
   )
 
-  if (!useVirtual) {
-    return (
-      <div className="overflow-x-auto rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] card-glow">
+  // Mobile table render
+  const renderMobileTable = () => (
+    <div className="block sm:hidden">
+      {/* Mobile tab strip */}
+      <div className="flex overflow-x-auto scrollbar-thin border-b border-[var(--border-primary)] bg-[var(--bg-tertiary)]">
+        {MOBILE_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-3 py-2 min-h-[44px] whitespace-nowrap text-xs font-medium transition-colors ${
+              activeTab === tab.id
+                ? 'text-[var(--accent-blue)] border-b-2 border-[var(--accent-blue)]'
+                : 'text-[var(--text-tertiary)]'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Mobile simplified table */}
+      <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
         <table className="min-w-full text-xs">
-          {tableHeader}
+          <thead className="bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] text-xs uppercase tracking-wider sticky top-0 z-10">
+            <tr>
+              <th className="px-3 py-2 text-left font-medium sticky left-0 top-0 z-20 bg-[var(--bg-tertiary)]">Maç</th>
+              <th className="px-2 py-2 text-center font-medium sticky top-0 bg-[var(--bg-tertiary)]">Skor</th>
+              {activeTabData.fields.map((field) => (
+                <th key={field} className="px-2 py-2 text-center font-medium sticky top-0 bg-[var(--bg-tertiary)]">
+                  {ODDS_LABELS[field]}
+                </th>
+              ))}
+            </tr>
+          </thead>
           <tbody className="divide-y divide-[var(--border-subtle)]">
-            {matches.map((match) => (
-              <tr key={match.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
-                {renderRow(match)}
-              </tr>
-            ))}
+            {matches.map((match) => {
+              const outcomeKeys = getOutcomeKeys(match)
+              return (
+                <tr key={match.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
+                  <td className="px-3 py-2 sticky left-0 z-[5] bg-[var(--bg-secondary)]">
+                    <Link href={`/analysis/${match.id}`} className="font-semibold text-[var(--text-primary)] hover:text-[var(--accent-blue)] transition-colors text-xs">
+                      {match.home_team} vs {match.away_team}
+                    </Link>
+                    <div className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
+                      <span className="truncate max-w-[100px]">{match.league}</span>
+                      <span
+                        className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold font-mono ${getMatchBadgeClass(
+                          match.matchCount,
+                          totalCategories
+                        )}`}
+                      >
+                        {match.matchCount}/{totalCategories}
+                      </span>
+                    </div>
+                    {match.matchedCategoryIds.length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {match.matchedCategoryIds.map((categoryId) => (
+                          <span key={categoryId} className="rounded-full bg-[var(--accent-blue-bg)] px-1.5 py-0.5 text-[9px] text-[var(--accent-blue)]">
+                            {CATEGORY_LABELS[categoryId] ?? categoryId}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 text-center font-mono text-[11px]">
+                    <div className="text-[var(--text-primary)]">{match.score_ft ?? '-'}</div>
+                    {match.score_ht ? (
+                      <div className="text-[9px] text-[var(--text-muted)]">İY: {match.score_ht}</div>
+                    ) : null}
+                  </td>
+                  {activeTabData.fields.map((field) => (
+                    <td
+                      key={`${match.id}-${field}`}
+                      className={`px-2 py-2 text-center font-mono tabular-nums border ${getCellClass(outcomeKeys.has(field))}`}
+                    >
+                      {formatOdd(match[field])}
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
-    )
-  }
+    </div>
+  )
 
-  return (
+  // Desktop renders
+  const renderDesktopNonVirtual = () => (
+    <div className="hidden sm:block overflow-x-auto overflow-y-auto max-h-[600px] rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] card-glow">
+      <table className="min-w-full text-xs">
+        {tableHeader}
+        <tbody className="divide-y divide-[var(--border-subtle)]">
+          {matches.map((match) => (
+            <tr key={match.id} className="hover:bg-[var(--bg-tertiary)] transition-colors">
+              {renderRow(match)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+
+  const renderDesktopVirtual = () => (
     <div
       ref={parentRef}
-      className="overflow-x-auto overflow-y-auto max-h-[600px] rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] card-glow"
+      className="hidden sm:block overflow-x-auto overflow-y-auto max-h-[70vh] sm:max-h-[600px] rounded-lg border border-[var(--border-primary)] bg-[var(--bg-secondary)] card-glow"
     >
       <table className="min-w-full text-xs">
         {tableHeader}
@@ -217,6 +314,16 @@ export const MatchOddsTable = ({
           )}
         </tbody>
       </table>
+    </div>
+  )
+
+  return (
+    <div className="rounded-lg sm:rounded-none border border-[var(--border-primary)] sm:border-0 bg-[var(--bg-secondary)] sm:bg-transparent overflow-hidden sm:overflow-visible">
+      {/* Mobile view */}
+      {renderMobileTable()}
+
+      {/* Desktop view */}
+      {useVirtual ? renderDesktopVirtual() : renderDesktopNonVirtual()}
     </div>
   )
 }
