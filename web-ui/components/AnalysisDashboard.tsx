@@ -20,7 +20,7 @@ type AnalysisDashboardProps = {
 const MIN_TOLERANCE = 0
 const MAX_TOLERANCE = 5
 const TOLERANCE_STEP = 0.1
-const DEFAULT_TOLERANCE = 4
+const DEFAULT_TOLERANCE = 2
 const ALL_OPTION = 'Tümü'
 const PAGE_SIZE = 50
 

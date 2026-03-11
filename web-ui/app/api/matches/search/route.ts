@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'))
   const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') ?? '50')))
-  const tolerance = Math.max(0, Math.min(0.1, Number(url.searchParams.get('tolerance') ?? '0.04')))
+  const tolerance = Math.max(0, Math.min(0.1, Number(url.searchParams.get('tolerance') ?? '0.02')))
   const league = url.searchParams.get('league')
   const season = url.searchParams.get('season')
 

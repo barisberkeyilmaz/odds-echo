@@ -30,7 +30,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
   const matchIdNumber = Number(matchId)
 
-  const tolerancePercent = Math.max(0, Math.min(10, Number(url.searchParams.get('tolerance') ?? '4')))
+  const tolerancePercent = Math.max(0, Math.min(10, Number(url.searchParams.get('tolerance') ?? '2')))
   const league = url.searchParams.get('league')
   const season = url.searchParams.get('season')
   const page = Math.max(1, Number(url.searchParams.get('page') ?? '1'))
@@ -85,15 +85,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     query = query.or(orParts.join(','))
   } else {
-    // Tolerance-based: filter by primary category DB-side, rest client-side
-    const primaryCategory = availableCategories[0]
-    for (const field of primaryCategory.fields) {
-      const value = base[field]
-      if (isValidOdd(value) && value !== null) {
-        const toleranceAbs = Math.max(value * toleranceValue, toleranceValue)
-        query = query.gte(field, value - toleranceAbs).lte(field, value + toleranceAbs)
+    // Tolerance-based: OR across all categories with range filters
+    const orParts: string[] = []
+    for (const category of availableCategories) {
+      const conditions: string[] = []
+      for (const field of category.fields) {
+        const value = base[field]
+        if (isValidOdd(value) && value !== null) {
+          const toleranceAbs = Math.max(value * toleranceValue, toleranceValue)
+          conditions.push(`${field}.gte.${value - toleranceAbs}`, `${field}.lte.${value + toleranceAbs}`)
+        }
+      }
+      if (conditions.length > 0) {
+        orParts.push(conditions.length === 1 ? conditions[0] : `and(${conditions.join(',')})`)
       }
     }
+
+    if (orParts.length === 0) {
+      return NextResponse.json({ totalCategories: availableCategories.length, matches: [], total: 0, page, limit, totalPages: 0 })
+    }
+
+    query = query.or(orParts.join(','))
   }
 
   if (league) {
