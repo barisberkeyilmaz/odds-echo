@@ -124,7 +124,12 @@ def process_full_match(match_url, driver):
     }
 
     # 6. Oranlar
-    bet_boxes = soup.find_all("div", class_="md")
+    # Canlı oranları scrape etme — sadece pre-match ve kapanış oranlarını al
+    is_live_odds = bool(soup.find(string=re.compile(r"Canlı\s*Oranlar", re.IGNORECASE)))
+    if is_live_odds:
+        print(f"   ⚡ Canlı oranlar tespit edildi, oranlar atlanıyor (match_code={match_code})")
+
+    bet_boxes = [] if is_live_odds else soup.find_all("div", class_="md")
     for box in bet_boxes:
         mname = None
         lnk = box.find("a", href=True)
