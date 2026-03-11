@@ -163,7 +163,7 @@ export default async function MatchDetailPage({ params }: { params: { id: string
   const totalCategories = ODDS_CATEGORIES.length
 
   return (
-    <main className="min-h-screen bg-grid">
+    <main className="min-h-screen bg-grid pb-20 md:pb-0">
       <Header />
       <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 stagger">
 
@@ -194,8 +194,8 @@ export default async function MatchDetailPage({ params }: { params: { id: string
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2 text-xs text-[var(--text-tertiary)]">
-            <span className="bg-[var(--bg-tertiary)] px-2 py-1 rounded">Sezon: {fixture.season}</span>
-            <span className="bg-[var(--bg-tertiary)] px-2 py-1 rounded font-mono">
+            <span className="bg-[var(--bg-tertiary)] px-2 py-1 rounded text-xs sm:text-[10px]">Sezon: {fixture.season}</span>
+            <span className="bg-[var(--bg-tertiary)] px-2 py-1 rounded font-mono text-xs sm:text-[10px]">
               Benzerlik toleransı: ±{SIMILARITY_TOLERANCE_ABS} veya %{Math.round(SIMILARITY_TOLERANCE_PCT * 100)}
             </span>
           </div>

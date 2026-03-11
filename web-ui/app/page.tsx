@@ -102,7 +102,7 @@ export default async function Home({
   ])
 
   return (
-    <main className="min-h-screen bg-grid">
+    <main className="min-h-screen bg-grid pb-20 md:pb-0">
       <Header totalMatches={fixtures.length} />
       <div className="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 stagger">
         <p className="text-xs text-[var(--text-muted)] mb-6">

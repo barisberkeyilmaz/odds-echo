@@ -97,7 +97,7 @@ export default function SearchableSelect({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] hover:border-[var(--border-accent)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
+        className="w-full flex items-center justify-between rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2.5 text-sm sm:py-2 sm:text-xs text-[var(--text-primary)] hover:border-[var(--border-accent)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
       >
         <span className={value === allValue ? 'text-[var(--text-muted)]' : ''}>
           {selectedLabel}
@@ -122,18 +122,18 @@ export default function SearchableSelect({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={placeholder}
-              className="w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
+              className="w-full rounded-md border border-[var(--border-primary)] bg-[var(--bg-primary)] px-3 py-2.5 text-sm sm:py-1.5 sm:text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent-blue)] focus:outline-none transition-colors"
             />
           </div>
 
           {/* Options list */}
-          <div className="max-h-60 overflow-y-auto">
+          <div className="max-h-[70vh] sm:max-h-60 overflow-y-auto">
             {/* "All" option */}
             {!search.trim() && (
               <button
                 type="button"
                 onClick={() => handleSelect(allValue)}
-                className={`w-full text-left px-3 py-2 text-xs hover:bg-[var(--bg-tertiary)] transition-colors ${
+                className={`w-full text-left px-3 py-3 text-sm sm:py-2 sm:text-xs hover:bg-[var(--bg-tertiary)] transition-colors ${
                   value === allValue
                     ? 'text-[var(--accent-blue)] bg-[var(--accent-blue-bg)]'
                     : 'text-[var(--text-primary)]'
@@ -149,7 +149,7 @@ export default function SearchableSelect({
                 key={opt.value}
                 type="button"
                 onClick={() => handleSelect(opt.value)}
-                className={`w-full text-left px-3 py-2 text-xs hover:bg-[var(--bg-tertiary)] transition-colors ${
+                className={`w-full text-left px-3 py-3 text-sm sm:py-2 sm:text-xs hover:bg-[var(--bg-tertiary)] transition-colors ${
                   value === opt.value
                     ? 'text-[var(--accent-blue)] bg-[var(--accent-blue-bg)]'
                     : 'text-[var(--text-primary)]'
@@ -162,7 +162,7 @@ export default function SearchableSelect({
             {/* Grouped */}
             {Array.from(grouped.groups.entries()).map(([groupName, items]) => (
               <div key={groupName}>
-                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-tertiary)] sticky top-0">
+                <div className="px-3 py-2 text-xs sm:py-1.5 sm:text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-tertiary)] sticky top-0">
                   {groupName}
                 </div>
                 {items.map((opt) => (
@@ -170,7 +170,7 @@ export default function SearchableSelect({
                     key={opt.value}
                     type="button"
                     onClick={() => handleSelect(opt.value)}
-                    className={`w-full text-left px-4 py-2 text-xs hover:bg-[var(--bg-tertiary)] transition-colors ${
+                    className={`w-full text-left px-4 py-3 text-sm sm:py-2 sm:text-xs hover:bg-[var(--bg-tertiary)] transition-colors ${
                       value === opt.value
                         ? 'text-[var(--accent-blue)] bg-[var(--accent-blue-bg)]'
                         : 'text-[var(--text-primary)]'
