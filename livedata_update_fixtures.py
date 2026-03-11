@@ -132,6 +132,10 @@ def extract_football_matches(payload) -> List[Dict]:
         country = _safe_get(meta, 1, "")
         league = _safe_get(meta, 3, "")
 
+        # Kadın futbolunu atla — istatistiksel veriyi bozmasın
+        if "Kadın" in str(league):
+            continue
+
         home = _safe_get(row, 2, "")
         away = _safe_get(row, 4, "")
         time_str = _safe_get(row, 16, "")
