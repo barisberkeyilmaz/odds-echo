@@ -1,120 +1,127 @@
-# 🦅 Odds Scrape (Mackolik)
+# OddsEcho
 
-Bu repo, Mackolik arşiv ve LiveData kaynaklarından maç + oran verisi toplayan, Supabase'e yazan ve Next.js arayüzüyle analiz sunan bir sistemdir. Python tarafı scraping ve otomasyonu, `web-ui` ise analiz ekranlarını yönetir.
+**Mackolik verilerinden oran bazli mac analiz platformu.**
 
-## Öne Çıkanlar
-- Supabase destekli tek kaynak tablo: `matches` (fikstür + geçmiş).
-- Queue tabanlı scraping (`match_queue`) + chunk bazlı worker.
-- LiveData fikstür senkronu ve `MONITORING` worker akışı.
-- Telegram "mükemmel eşleşme" bildirimi (HTML kart + screenshot).
-- Next.js UI: fikstür listesi, oran arama, benzer maç, analiz, perfect-match dashboard.
+Gecmis mac oranlarini toplayarak "benzer oranli maclarin gecmiste nasil sonuclandigini" gorsellestirir. Queue tabanli scraping altyapisi ve modern analiz arayuzuyle calisan ucan uca bir sistemdir.
 
-## Proje Yapısı (Özet)
-- `main.py`: CLI komutları ve giriş noktası.
-- `scraper_engine.py`: Tek maç scraping + upsert.
-- `batch_processor.py`: `PENDING/ERROR/MONITORING` maçları işleyen worker.
-- `monitoring_worker.py`: Fikstürleri zaman penceresinde takip eden worker.
-- `queue_manager.py` + `link_harvester.py`: Sezon/hafta bazlı maç link toplama.
-- `livedata_update_fixtures.py`: LiveData fikstür senkronu (date/days-ahead).
-- `notify_perfect_matches.py`: Telegram görsel bildirim akışı.
-- `repair_queue.py`: `matches` -> `match_queue` durum senkronu.
-- `web-ui/`: Next.js arayüzü.
-- `migrate_fixtures.py`: Legacy `weekly_fixtures` -> `matches` taşıma (gerekirse).
-- `create_tables.py`: Legacy tablo kurulumu (aktif kullanım için değil).
+**[Canli Demo &rarr; odds-echo.vercel.app](https://odds-echo.vercel.app)**
 
-## Kurulum
-1) Python bağımlılıkları:
-```bash
-pip3 install -r requirements.txt
+![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+![Selenium](https://img.shields.io/badge/Selenium-Scraping-43B02A?logo=selenium&logoColor=white)
+
+---
+
+## Ozellikler
+
+- **Oran Benzerlik Analizi** — Secilen macin oranlarina yakin gecmis maclari bulur ve sonuc dagilimlarini gosterir
+- **Queue Tabanli Scraping** — `match_queue` uzerinden chunk bazli, hataya dayanikli veri toplama
+- **Fikstur Takibi** — LiveData kaynagindan otomatik fikstur senkronu ve skor takibi (MONITORING worker)
+- **Mukemmel Eslesme** — Tam oran eslesmesi bulunan maclari tespit edip Telegram ile bildirim gonderir
+- **Tek Kaynak Tablo** — Fikstur ve gecmis veriler tek `matches` tablosunda birlesik
+
+---
+
+## Mimari
+
+```
+Mackolik (Web)
+    |
+    v
+[Selenium Scraper]  <-->  [Supabase / PostgreSQL]  <-->  [Next.js Web UI]
+    |                           |
+    v                           v
+[match_queue]              [matches]
+(PENDING/MONITORING)       (tek kaynak tablo)
+    |
+    v
+[Telegram Bildirim]
 ```
 
-2) Root dizinde `.env`:
-```env
-SUPABASE_URL="https://your-project-id.supabase.co"
-SUPABASE_KEY="your-service-role-key"
-CHUNK_SIZE=20
+**Scraper (Python):** Mackolik arsiv ve LiveData kaynaklarindan veri toplar, Supabase'e yazar.
+**Web UI (Next.js):** Supabase'den okur; oran arama, benzerlik analizi ve mukemmel eslesme dashboard sunar.
+
+---
+
+## Proje Yapisi
+
+```
+odds-scrape-mackolik/
+├── main.py                      # CLI giris noktasi
+├── config.py                    # Supabase baglantisi ve ortam degiskenleri
+├── scraper_engine.py            # Tek mac scraping + upsert
+├── batch_processor.py           # PENDING/ERROR/MONITORING maclari isleyen worker
+├── monitoring_worker.py         # Fikstuleri zaman penceresinde takip eden worker
+├── queue_manager.py             # Kuyruk yonetimi
+├── link_harvester.py            # Sezon/hafta bazli mac link toplama
+├── livedata_update_fixtures.py  # LiveData fikstur senkronu
+├── notify_perfect_matches.py    # Telegram gorsel bildirim akisi
+├── repair_queue.py              # matches -> match_queue durum senkronu
+├── requirements.txt
+└── web-ui/                      # Next.js 16 + React 19 + Tailwind CSS 4
+    ├── app/
+    │   ├── page.tsx             # Fikstur listesi
+    │   ├── odds-search/         # Oran arama
+    │   ├── match/[id]/          # Benzer mac listesi
+    │   ├── analysis/[id]/       # Kategori bazli analiz
+    │   └── perfect-match/       # Tam eslesme dashboard
+    └── components/
 ```
 
-3) Telegram bildirimleri (opsiyonel):
-```env
-TELEGRAM_BOT_TOKEN="123456:ABCDEF..."
-TELEGRAM_CHAT_ID="-1001234567890"
-```
+---
 
-4) Web UI için `web-ui/.env.local`:
-```env
-NEXT_PUBLIC_SUPABASE_URL="https://your-project-id.supabase.co"
-NEXT_PUBLIC_SUPABASE_KEY="your-anon-or-service-key"
-```
+## Sayfalar
 
-## CLI Komutları
-Durum:
-```bash
-python3 main.py status
-```
+| Sayfa | Aciklama |
+|-------|----------|
+| [`/`](https://odds-echo.vercel.app) | Tarih bazli fikstur tablosu |
+| `/odds-search` | Oran arama ve sonuc dagilimlari |
+| `/match/[id]` | Benzer oranlara sahip gecmis maclar |
+| `/analysis/[id]` | Kategori bazli analiz dashboard |
+| `/perfect-match` | Tam oran eslesmesi dashboard |
 
-Geçmiş maç kuyruğu:
-```bash
-python3 main.py fill-queue
-```
+---
 
-LiveData fikstür senkronu (varsayılan dry-run):
-```bash
-python3 main.py update-fixtures --days-ahead 3
-python3 main.py update-fixtures --date 19/01/2026 --write-db
-python3 main.py update-fixtures --date 19/01/2026 --status MONITORING --error-log "Manual sync"
-```
+## Veritabani
 
-Worker:
-```bash
-python3 main.py run-worker
-```
+**Temel tablolar:**
 
-Fikstür takip worker:
-```bash
-python3 main.py run-monitoring-worker
-```
+| Tablo | Amac |
+|-------|------|
+| `matches` | Tek kaynak tablo — fikstur ve gecmis mac verileri |
+| `match_queue` | Scraping kuyrugu ve durum takibi |
+| `leagues` | Lig referans bilgileri |
+| `seasons` | Sezon referans bilgileri |
 
-Mükemmel eşleşme bildirimi:
-```bash
-python3 main.py notify-perfect-matches
-python3 main.py notify-perfect-matches --date 2026-01-20
-python3 main.py notify-perfect-matches --date 2026-01-20 --dry-run --max-matches 3
-```
+**Statusler:**
 
-Bakım:
-```bash
-python3 main.py reset-errors
-python3 main.py repair-queue
-python3 main.py create-tables  # legacy weekly_fixtures
-```
+| Status | Anlam |
+|--------|-------|
+| `PENDING` | Islenmeyi bekliyor |
+| `MONITORING` | Fikstur, skor bekleniyor |
+| `SUCCESS` | Basariyla islendi |
+| `ERROR` | Hata olustu, tekrar denenebilir |
+| `BAD_DATA` | Eksik/gecersiz veri |
 
-## Akışlar (Kısa)
-- **Geçmiş**: `fill-queue` → `match_queue:PENDING` → `run-worker` → `matches` upsert → queue status (`SUCCESS/BAD_DATA/ERROR`).
-- **Fikstür**: `update-fixtures` → `match_queue:MONITORING` → `run-monitoring-worker` → skor geldikçe `SUCCESS`.
-- **Web UI**: `matches` tablosunu okur; analizler tolerans/filtrelerle çalışır.
+---
 
-## Web UI
-Çalıştırma:
-```bash
-cd web-ui
-npm install
-npm run dev
-```
+## Teknoloji Yigini
 
-Sayfalar:
-- `/`: Tarih bazlı fikstür tablosu.
-- `/odds-search`: Oran arama ve sonuç dağılımları.
-- `/match/[id]`: Benzer maç listesi.
-- `/analysis/[id]`: Kategori bazlı analiz dashboard.
-- `/perfect-match`: Tam eşleşme dashboard.
+| Katman | Teknoloji |
+|--------|-----------|
+| Scraping | Python, Selenium, BeautifulSoup |
+| Veritabani | Supabase (PostgreSQL) |
+| Backend API | Supabase Client |
+| Frontend | Next.js 16, React 19, TypeScript |
+| Styling | Tailwind CSS 4 |
+| Grafikler | Recharts |
+| Bildirim | Telegram Bot API |
 
-## Veri Kalitesi ve Statüler
-- `match_queue.status`: `PENDING`, `MONITORING`, `SUCCESS`, `ERROR`, `BAD_DATA`.
-- `matches.status`: Mackolik kaynaklı durum (`MS`, `Ert`, vb.).
-- `BAD_DATA`: ev/deplasman/lig/sezon eksikse veya geçmiş maçta skor yoksa.
+---
 
-## Notlar
-- Selenium/Chrome headless çalışır; sistemde Chrome kurulumu gerekir.
-- `CHUNK_SIZE` worker yükünü dengeler.
-- Python tarafında Supabase için service-role key önerilir.
+## Lisans
+
+Bu proje kisisel kullanim amaciyla gelistirilmistir.
