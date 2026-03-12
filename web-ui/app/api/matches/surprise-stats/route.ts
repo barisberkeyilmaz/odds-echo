@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabaseClient'
+import { supabase, fetchAllRows } from '@/lib/supabaseClient'
 import {
   buildMatchSelect,
   isValidOdd,
@@ -94,32 +94,37 @@ export async function POST(request: Request) {
       // Hedef sonucun oran aralığı
       const targetRange = getToleranceRange(oddValue, tolerance)
 
-      let query = supabase
-        .from('matches')
-        .select(SELECT_FIELDS)
-        .not('score_ft', 'is', null)
-        .neq('id', matchId)
-        .gte(outcomeKey, targetRange.lower)
-        .lte(outcomeKey, targetRange.upper)
-
-      // Hibrit: MS profil eşleştirmesi (ms_1, ms_x, ms_2)
-      // Maçın genel profilini (favori/underdog/dengeli) belirler
-      for (const msField of MS_PROFILE_FIELDS) {
+      // MS profil tolerans aralıkları (closure dışında hesapla)
+      const msRanges = MS_PROFILE_FIELDS.map((msField) => {
         const msValue = base[msField] as number | null
         if (isValidOdd(msValue) && msValue !== null) {
-          const msRange = getToleranceRange(msValue, tolerance)
-          query = query.gte(msField, msRange.lower).lte(msField, msRange.upper)
+          return { field: msField, range: getToleranceRange(msValue, tolerance) }
         }
-      }
+        return null
+      }).filter(Boolean) as { field: string; range: { lower: number; upper: number } }[]
 
-      if (isIyms) {
-        query = query.not('score_ht', 'is', null)
-      }
+      let candidates: Record<string, unknown>[]
+      try {
+        candidates = await fetchAllRows<Record<string, unknown>>(() => {
+          let q = supabase
+            .from('matches')
+            .select(SELECT_FIELDS)
+            .not('score_ft', 'is', null)
+            .neq('id', matchId)
+            .gte(outcomeKey, targetRange.lower)
+            .lte(outcomeKey, targetRange.upper)
 
-      // Limit yok — tüm tarihsel veriye bakıyoruz
-      const { data: candidates, error: candError } = await query
+          for (const { field, range } of msRanges) {
+            q = q.gte(field, range.lower).lte(field, range.upper)
+          }
 
-      if (candError || !candidates) {
+          if (isIyms) {
+            q = q.not('score_ht', 'is', null)
+          }
+
+          return q
+        })
+      } catch {
         results[compositeKey] = { totalSimilar: 0, hitCount: 0, hitRate: 0 }
         return
       }

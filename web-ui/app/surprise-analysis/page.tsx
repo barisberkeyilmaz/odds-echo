@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabaseClient'
+import { supabase, fetchAllRows } from '@/lib/supabaseClient'
 import Header from '@/components/Header'
 import SurpriseAnalysisDashboard from '@/components/SurpriseAnalysisDashboard'
 import FixtureDatePicker from '@/components/FixtureDatePicker'
@@ -64,17 +64,21 @@ async function getFixturesForDate(dateKey: string) {
 }
 
 async function getAvailableDates(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('matches')
-    .select('match_date, score_ft')
-    .gte('match_date', new Date().toISOString().split('T')[0])
-    .order('match_date', { ascending: true })
-    .limit(500)
-
-  if (error || !data) return []
+  let rows: { match_date?: string; score_ft?: string | null }[]
+  try {
+    rows = await fetchAllRows<{ match_date?: string; score_ft?: string | null }>(() =>
+      supabase
+        .from('matches')
+        .select('match_date, score_ft')
+        .gte('match_date', new Date().toISOString().split('T')[0])
+        .order('match_date', { ascending: true })
+    )
+  } catch {
+    return []
+  }
 
   const dateSet = new Set<string>()
-  data.forEach((row: { match_date?: string; score_ft?: string | null }) => {
+  rows.forEach((row) => {
     if (row.match_date && (!row.score_ft || !SCORE_RE.test(row.score_ft))) {
       const dateKey = row.match_date.split('T')[0]
       dateSet.add(dateKey)
