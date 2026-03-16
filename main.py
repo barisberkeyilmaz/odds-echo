@@ -83,6 +83,11 @@ def notify_perfect_matches():
     from notify_perfect_matches import run_from_main
     run_from_main(sys.argv[2:])
 
+def generate_daily_picks():
+    """Günün kuponu üretir (Wilson Score tabanlı)."""
+    from generate_daily_picks import run_from_main
+    run_from_main(sys.argv[2:])
+
 def create_tables_cmd():
     """Veritabanı tablolarını oluşturur."""
     from create_tables import create_tables
@@ -110,6 +115,7 @@ def main():
         "status": show_status,
         "reset-errors": reset_errors,
         "repair-queue": repair_queue,
+        "generate-daily-picks": generate_daily_picks,
         "create-tables": create_tables_cmd,
     }
 
