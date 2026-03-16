@@ -12,7 +12,8 @@ from scraping_client import fetch_static
 def scrape_h2h(match_code: str) -> dict:
     """H2H sayfasını çeker ve parse eder."""
     url = f"https://arsiv.mackolik.com/Match/Head2Head.aspx?id={match_code}&s=1"
-    response = fetch_static(url)
+    resp = fetch_static(url)
+    body = str(resp.html_content)
 
     data = {}
 
@@ -28,7 +29,7 @@ def scrape_h2h(match_code: str) -> dict:
 
     for parser in parsers:
         try:
-            result = parser(response)
+            result = parser(body)
             if result:
                 data.update(result)
         except Exception as e:
@@ -37,85 +38,87 @@ def scrape_h2h(match_code: str) -> dict:
     return data if data else None
 
 
-def parse_form(response) -> dict:
-    """Form Durumu: Son 5 maçın sonuçlarını çeker (G/B/M)."""
-    data = {}
-    body = str(response.body)
+def _get_team_names(body: str) -> tuple:
+    """Sayfa başlıklarından ev sahibi ve deplasman takım isimlerini çıkarır."""
+    matches = re.findall(r'([^<>]+?)\s*-\s*Form Durumu', body)
+    home = matches[0].strip() if len(matches) > 0 else None
+    away = matches[1].strip() if len(matches) > 1 else None
+    return home, away
 
-    # Her takımın form tablosu "Form Durumu" başlığı altında
-    # Form tablosundaki sonuç ikonlarından çıkar
-    # kk-1.gif = Galibiyet, kk-0.gif = Beraberlik, kk-2.gif = Mağlubiyet
+
+def parse_form(body: str) -> dict:
+    """Form Durumu: Son maçların sonuçlarını çeker (G/B/M)."""
+    data = {}
+
+    # Her takımın form bölümünü "Form Durumu" ile ayır
     sections = body.split("Form Durumu")
 
-    for i, section in enumerate(sections[1:3], 1):  # İlk 2 form bölümü (ev/deplasman)
+    for i, section in enumerate(sections[1:3], 1):
         results = []
-        icons = re.findall(r'kk-(\d)\.gif', section[:3000])
-        for icon in icons[:5]:  # Son 5 maç
-            if icon == '1':
-                results.append('G')
-            elif icon == '0':
-                results.append('B')
-            elif icon == '2':
-                results.append('M')
+        # Her <tr> içindeki kk ikonundan sonucu al
+        rows = re.findall(r'<tr class="row[^"]*">(.*?)</tr>', section[:8000], re.DOTALL)
+        for row in rows[:5]:
+            icon = re.search(r'kk-(\d)\.gif', row)
+            if icon:
+                code = icon.group(1)
+                results.append({'1': 'G', '0': 'B', '2': 'M'}.get(code, '?'))
 
         form_str = ''.join(results)
         if form_str:
-            if i == 1:
-                data['form_home'] = form_str
-            else:
-                data['form_away'] = form_str
+            key = 'form_home' if i == 1 else 'form_away'
+            data[key] = form_str
 
     return data if data else None
 
 
-def parse_standings(response) -> dict:
-    """Puan durumundan sıra ve puan bilgisi çeker."""
+def parse_standings(body: str) -> dict:
+    """Puan durumundan sıra ve puan bilgisi çeker — takım ismiyle arar."""
     data = {}
-
-    # tblStanding tablosu
-    table = response.css_first("table#tblStanding")
-    if not table:
+    home_name, away_name = _get_team_names(body)
+    if not home_name or not away_name:
         return None
 
-    rows = table.css("tr.row")
-    # Highlighted (vurgulanan) satırlar takımlardır (background-color: #fff3a5)
-    highlighted = []
-    for row in rows:
-        style = row.attrib.get('style', '')
-        if 'fff3a5' in style:
-            highlighted.append(row)
+    idx = body.find('id="tblStanding"')
+    if idx < 0:
+        return None
 
-    for i, row in enumerate(highlighted[:2]):
-        tds = row.css("td")
-        if len(tds) >= 5:
+    table_html = body[idx:idx + 8000]
+    all_rows = re.findall(r'<tr[^>]*class="row[^"]*"[^>]*>(.*?)</tr>', table_html, re.DOTALL)
+
+    for row in all_rows:
+        tds = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)
+        texts = [re.sub(r'<[^>]+>', '', td).strip() for td in tds]
+        row_text = ' '.join(texts)
+
+        target = None
+        if home_name in row_text:
+            target = 'home'
+        elif away_name in row_text:
+            target = 'away'
+
+        if target and len(texts) >= 5:
             try:
-                standing = int(tds[0].text.strip())
-                points_td = tds[-2]  # P sütunu
-                points_text = points_td.text.strip()
+                standing = int(texts[0]) if texts[0].isdigit() else None
+                # Puan sütunu: sondan 2. sütun (O | P | Av yapısı)
+                points_text = texts[-2].strip()
                 points = int(points_text) if points_text.isdigit() else None
-
-                if i == 0:
-                    data['standing_home'] = standing
-                    data['points_home'] = points
-                else:
-                    data['standing_away'] = standing
-                    data['points_away'] = points
+                if standing is not None:
+                    data[f'standing_{target}'] = standing
+                if points is not None:
+                    data[f'points_{target}'] = points
             except (ValueError, IndexError):
                 pass
 
     return data if data else None
 
 
-def parse_goal_dist(response) -> dict:
+def parse_goal_dist(body: str) -> dict:
     """Toplam Gol dağılımını parse eder."""
     data = {}
-    body = str(response.body)
 
-    # "Toplam Gol" bölümünü bul
     sections = body.split("Toplam Gol")
     for idx, section in enumerate(sections[1:3], 1):
         dist = {}
-        # 0-1, 2-3, 4-5, 6+ satırları
         for label in ['0-1', '2-3', '4-5', '6+']:
             pattern = rf'<b>{re.escape(label)}</b>.*?<td>\s*(\d+)\s*</td>\s*<td>\s*%(\d+)\s*</td>'
             match = re.search(pattern, section[:2000], re.DOTALL)
@@ -129,14 +132,12 @@ def parse_goal_dist(response) -> dict:
     return data if data else None
 
 
-def parse_kg_pct(response) -> dict:
+def parse_kg_pct(body: str) -> dict:
     """Karşılıklı Gol yüzdesini parse eder."""
     data = {}
-    body = str(response.body)
 
     sections = body.split("Karşılıklı Gol")
     for idx, section in enumerate(sections[1:3], 1):
-        # "Var" satırındaki toplam yüzde
         match = re.search(r'<b>Var</b>.*?<td>\s*(\d+)\s*</td>\s*<td>\s*%(\d+)\s*</td>', section[:1000], re.DOTALL)
         if match:
             key = 'kg_pct_home' if idx == 1 else 'kg_pct_away'
@@ -145,19 +146,23 @@ def parse_kg_pct(response) -> dict:
     return data if data else None
 
 
-def parse_au_pct(response) -> dict:
-    """2.5 Alt/Üst yüzdesini parse eder."""
-    data = {}
-    body = str(response.body)
+def parse_au_pct(body: str) -> dict:
+    """2,5 Alt/Üst yüzdesini parse eder.
 
-    # "2,5 Üst" veya "2.5 Üst" satırını bul
-    sections = body.split("2,5 Alt/Üst")
+    Sayfa yapısı: "Crystal Palace - 2,5 Altı / Üstü" başlığı altında tablo var.
+    Tablodaki Üst satırının toplam yüzdesi.
+    """
+    data = {}
+
+    # "2,5 Altı / Üstü" bölümlerini bul
+    sections = body.split("2,5 Altı / Üstü")
+    if len(sections) < 2:
+        sections = body.split("2,5 Alt/Üst")
     if len(sections) < 2:
         sections = body.split("2.5 Alt/Üst")
 
     for idx, section in enumerate(sections[1:3], 1):
-        # "Üst" satırındaki toplam yüzde
-        match = re.search(r'<b>Üst</b>.*?<td>\s*(\d+)\s*</td>\s*<td>\s*%(\d+)\s*</td>', section[:1000], re.DOTALL)
+        match = re.search(r'<b>Üst</b>.*?<td>\s*(\d+)\s*</td>\s*<td>\s*%(\d+)\s*</td>', section[:2000], re.DOTALL)
         if match:
             key = 'au25_over_pct_home' if idx == 1 else 'au25_over_pct_away'
             data[key] = float(match.group(2))
@@ -165,45 +170,69 @@ def parse_au_pct(response) -> dict:
     return data if data else None
 
 
-def parse_referee(response) -> dict:
+def parse_referee(body: str) -> dict:
     """Hakem istatistiklerini parse eder."""
-    body = str(response.body)
-
     idx = body.find("Hakem İstatistikleri")
     if idx < 0:
         return None
 
-    section = body[idx:idx+3000]
-
-    # Hakem adı
+    section = body[idx:idx + 3000]
     name_match = re.search(r'Hakem:\s*.*?<a[^>]*>([^<]+)</a>', section, re.DOTALL)
     referee_name = name_match.group(1).strip() if name_match else None
 
-    # Basit istatistikler: sarı kart ort., kırmızı kart ort., faul ort.
+    if not referee_name:
+        return None
+
     stats = {"name": referee_name}
+    return {"referee_stats": json.dumps(stats, ensure_ascii=False)}
 
-    return {"referee_stats": json.dumps(stats, ensure_ascii=False)} if referee_name else None
 
-
-def parse_h2h_summary(response) -> dict:
-    """H2H genel istatistikleri (her iki takımın karşılaştığı maç özeti)."""
-    body = str(response.body)
-
-    # md-omparison (sic) tablosundaki maçları say
+def parse_h2h_summary(body: str) -> dict:
+    """H2H genel istatistikleri — iki takım arası geçmiş maçlar."""
     section_start = body.find('class="md-omparison"')
     if section_start < 0:
         return None
 
     section = body[section_start:section_start + 20000]
 
-    # Maç sonuçlarını say
-    home_wins = section.count('style="background-color: #D5F5E3"')  # Yeşil = galibiyet
-    draws = section.count('style="background-color: #FEF9E7"')  # Sarı = beraberlik
-    away_wins = section.count('style="background-color: #FADBD8"')  # Kırmızı = mağlubiyet
+    # Maç skorlarını bul: <b>skor</b> pattern'i
+    scores = re.findall(r'<b>(\d+)\s*-\s*(\d+)</b>', section)
+    if not scores:
+        return None
 
-    # Toplam maç
-    total = len(re.findall(r'<tr class="">', section)) + len(re.findall(r'<tr class="row', section))
+    home_name, away_name = _get_team_names(body)
 
+    # Her maç satırından ev sahibi takımı ve skoru çıkar
+    home_wins = 0
+    away_wins = 0
+    draws = 0
+
+    # Satır pattern: takım ismi ... <b>skor</b> ... takım ismi
+    rows = re.findall(
+        r'<td[^>]*align="right"[^>]*class="[^"]*"[^>]*>([^<]+)</td>.*?<b>(\d+)\s*-\s*(\d+)</b>',
+        section, re.DOTALL
+    )
+
+    for row_home_team, h_goals, a_goals in rows:
+        h = int(h_goals)
+        a = int(a_goals)
+        row_home = row_home_team.strip()
+
+        if h > a:
+            # Satırdaki ev sahibi kazandı
+            if home_name and home_name in row_home:
+                home_wins += 1
+            else:
+                away_wins += 1
+        elif a > h:
+            if home_name and home_name in row_home:
+                away_wins += 1
+            else:
+                home_wins += 1
+        else:
+            draws += 1
+
+    total = home_wins + away_wins + draws
     if total == 0:
         return None
 

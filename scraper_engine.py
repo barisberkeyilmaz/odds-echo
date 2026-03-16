@@ -206,8 +206,17 @@ def process_full_match(match_url, page):
     # Kaydet
     supabase.table("matches").upsert(row, on_conflict="match_code").execute()
 
-    # Stats → match_stats tablosuna upsert (sadece oynanmış maçlar)
-    if score_ft:
+    # Kalite Kontrolü — önce future/past belirle, sonra stats/h2h zamanlama
+    is_future_match = False
+    if match_info["match_date"]:
+        try:
+            mdate = datetime.strptime(match_info["match_date"], '%Y-%m-%d %H:%M:%S')
+            now = datetime.now()
+            if mdate > now: is_future_match = True
+        except Exception: pass
+
+    # Stats → sadece maç bittikten sonra (skor varsa)
+    if score_ft and not is_future_match:
         try:
             stats = parse_match_stats(response)
             if stats:
@@ -216,7 +225,7 @@ def process_full_match(match_url, page):
         except Exception as e:
             print(f"   Stats failed for {match_code}: {e}")
 
-    # H2H → match_h2h tablosuna upsert
+    # H2H → maç öncesi de anlamlı (form, puan durumu), her zaman çek
     try:
         from h2h_scraper import scrape_h2h
         h2h_data = scrape_h2h(match_code)
@@ -225,15 +234,6 @@ def process_full_match(match_url, page):
             supabase.table("match_h2h").upsert(h2h_data, on_conflict="match_code").execute()
     except Exception as e:
         print(f"   H2H failed for {match_code}: {e}")
-
-    # Kalite Kontrolü
-    is_future_match = False
-    if match_info["match_date"]:
-        try:
-            mdate = datetime.strptime(match_info["match_date"], '%Y-%m-%d %H:%M:%S')
-            now = datetime.now()
-            if mdate > now: is_future_match = True
-        except Exception: pass
 
     missing = []
     if not home: missing.append("home")
