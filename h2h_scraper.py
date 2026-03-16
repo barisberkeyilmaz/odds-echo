@@ -47,21 +47,23 @@ def _get_team_names(body: str) -> tuple:
 
 
 def parse_form(body: str) -> dict:
-    """Form Durumu: Son maçların sonuçlarını çeker (G/B/M)."""
+    """Form Durumu: Son maçların sonuçlarını çeker (G/B/M).
+
+    Her satırın son sütununda sonuç ikonu var:
+    G.png = Galibiyet, B.png = Beraberlik, M.png = Mağlubiyet
+    """
     data = {}
 
-    # Her takımın form bölümünü "Form Durumu" ile ayır
     sections = body.split("Form Durumu")
 
     for i, section in enumerate(sections[1:3], 1):
         results = []
-        # Her <tr> içindeki kk ikonundan sonucu al
-        rows = re.findall(r'<tr class="row[^"]*">(.*?)</tr>', section[:8000], re.DOTALL)
+        rows = re.findall(r'<tr class="row[^"]*">(.*?)</tr>', section[:10000], re.DOTALL)
         for row in rows[:5]:
-            icon = re.search(r'kk-(\d)\.gif', row)
+            # Son sütundaki G.png / B.png / M.png ikonunu al
+            icon = re.search(r'/([GBM])\.png', row)
             if icon:
-                code = icon.group(1)
-                results.append({'1': 'G', '0': 'B', '2': 'M'}.get(code, '?'))
+                results.append(icon.group(1))
 
         form_str = ''.join(results)
         if form_str:
@@ -82,8 +84,10 @@ def parse_standings(body: str) -> dict:
     if idx < 0:
         return None
 
-    table_html = body[idx:idx + 8000]
-    all_rows = re.findall(r'<tr[^>]*class="row[^"]*"[^>]*>(.*?)</tr>', table_html, re.DOTALL)
+    table_end = body.find('</table>', idx)
+    table_html = body[idx:table_end] if table_end > idx else body[idx:idx + 10000]
+    # class="row ..." style="..." gibi farklı attribute sıralamaları olabilir
+    all_rows = re.findall(r'<tr[^>]*>(.*?)</tr>', table_html, re.DOTALL)
 
     for row in all_rows:
         tds = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL)

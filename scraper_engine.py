@@ -215,8 +215,14 @@ def process_full_match(match_url, page):
             if mdate > now: is_future_match = True
         except Exception: pass
 
-    # Stats → sadece maç bittikten sonra (skor varsa)
-    if score_ft and not is_future_match:
+    # Stats → sadece maç kesin bittikten sonra (status=MS veya tarih+3h geçmiş)
+    from utils import is_match_finished
+    match_finished = is_match_finished({
+        "match_date": match_info["match_date"],
+        "score_ft": score_ft,
+        "status": status,
+    })
+    if match_finished:
         try:
             stats = parse_match_stats(response)
             if stats:
