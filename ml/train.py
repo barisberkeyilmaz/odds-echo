@@ -313,3 +313,7 @@ def train_all_models():
         logger.info(f"   {m.upper():5s} → LogLoss={met['log_loss']}, Acc={met['accuracy']}, ROI={met['roi_simulation']['roi_pct']}%")
 
     return all_metrics
+
+
+if __name__ == "__main__":
+    train_all_models()

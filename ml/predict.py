@@ -216,3 +216,7 @@ def predict_upcoming():
     logger.info(f"   Toplam tahmin: {total_predictions}")
     logger.info(f"   Value bet sinyali: {total_value_bets}")
     logger.info(f"   Model versiyonu: {model_version}")
+
+
+if __name__ == "__main__":
+    predict_upcoming()
