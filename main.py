@@ -8,7 +8,7 @@ Kullanım:
     python main.py run-worker    # Scraper'ı başlat
     python main.py run-monitoring-worker  # MONITORING maçları takip et
     python main.py run-fast-monitoring    # Yakın maçları hızlı takip et
-    python main.py backfill      # Son 6 ay stats + H2H backfill
+    python main.py backfill [--months N]  # Stats + H2H backfill (varsayılan 24 ay)
     python main.py status        # Kuyruk durumunu göster
     python main.py reset-errors  # Hatalı kayıtları sıfırla
     python main.py repair-queue  # Kuyruktaki bozulmuş statüleri onar
@@ -74,9 +74,17 @@ def run_fast_monitoring():
     run_monitoring_worker(window_hours_before=3, window_hours_after=1, include_missing_dates=False)
 
 def backfill_data():
-    """Son 6 ay stats + H2H backfill."""
+    """Stats + H2H backfill. Varsayılan 24 ay, --months ile değiştirilebilir."""
     from backfill import run_backfill
-    run_backfill(months=6)
+    months = 24
+    for arg in sys.argv[2:]:
+        if arg.startswith("--months="):
+            months = int(arg.split("=")[1])
+        elif arg.startswith("--months"):
+            idx = sys.argv.index(arg)
+            if idx + 1 < len(sys.argv):
+                months = int(sys.argv[idx + 1])
+    run_backfill(months=months)
 
 def create_tables_cmd():
     """Veritabanı tablolarını oluşturur."""
