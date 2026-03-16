@@ -1,12 +1,12 @@
 """
-Scraping Client — Playwright + Scrapling Adaptor
+Scraping Client — Playwright + Scrapling
 Mackolik sayfaları JS ile oran yüklediği için browser gereklidir.
-Playwright (domcontentloaded stratejisi) + Scrapling Adaptor (CSS parse) kullanır.
+Playwright (domcontentloaded stratejisi) + Scrapling Selector (CSS parse) kullanır.
 
 Kullanım:
     browser = create_browser()
     page = browser.new_page()
-    response = fetch_page(url, page)  # Adaptor nesnesi döner
+    response = fetch_page(url, page)  # Selector nesnesi döner
     ...
     browser.close()
 
@@ -15,7 +15,13 @@ H2H ve AJAX gibi statik sayfalar için:
 """
 
 import os
-from scrapling import Adaptor, Fetcher
+from scrapling import Fetcher
+
+# Scrapling 0.4+ Selector, eski sürümlerde Adaptor
+try:
+    from scrapling import Selector as _Parser
+except ImportError:
+    from scrapling import Adaptor as _Parser
 
 # Playwright modülleri lazy import (sadece browser gereken işlerde)
 _playwright_ctx = None
@@ -52,7 +58,7 @@ def close_browser(browser):
 
 def fetch_page(url, page):
     """
-    Playwright page ile URL'yi çeker, Scrapling Adaptor döner.
+    Playwright page ile URL'yi çeker, Scrapling Selector döner.
     page_load_strategy = 'eager' eşdeğeri: domcontentloaded.
     """
     page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -68,7 +74,7 @@ def fetch_page(url, page):
     time.sleep(1.5)
 
     html = page.content()
-    return Adaptor(html, url=url)
+    return _Parser(html)
 
 
 def fetch_static(url):
