@@ -29,16 +29,24 @@ def run_monitoring_worker(
     window_start_str = window_start.strftime("%Y-%m-%d %H:%M:%S")
     window_end_str = window_end.strftime("%Y-%m-%d %H:%M:%S")
 
-    matches_in_window = (
-        supabase.table("matches")
-        .select("match_code")
-        .gte("match_date", window_start_str)
-        .lte("match_date", window_end_str)
-        .execute()
-    )
-    window_match_codes = {
-        m["match_code"] for m in (matches_in_window.data or []) if m.get("match_code")
-    }
+    # Pagination ile tüm maçları çek (Supabase varsayılan 1000 limit)
+    window_match_codes = set()
+    page_size = 1000
+    offset = 0
+    while True:
+        matches_in_window = (
+            supabase.table("matches")
+            .select("match_code")
+            .gte("match_date", window_start_str)
+            .lte("match_date", window_end_str)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = [m["match_code"] for m in (matches_in_window.data or []) if m.get("match_code")]
+        window_match_codes.update(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
 
     if not window_match_codes and not include_missing_dates:
         logger.info("No matches within date window. Nothing to process.")
@@ -62,43 +70,63 @@ def run_monitoring_worker(
             queue.extend(response.data or [])
 
     if include_missing_dates:
-        logger.info("Checking for missing-date matches...")
-        all_non_success = (
-            supabase.table("match_queue")
-            .select("match_code, match_url, status, retry_count")
-            .neq("status", "SUCCESS")
-            .neq("status", "PERMANENT_ERROR")
-            .execute()
-        )
+        logger.info("Checking for never-processed and stale matches...")
         existing_codes = {item["match_code"] for item in queue}
-        candidates = [
-            item for item in (all_non_success.data or [])
-            if item.get("match_code")
-            and item["match_code"] not in existing_codes
-            and item["match_code"] not in window_match_codes
-        ]
-        logger.info("Found %d candidates to check against matches table", len(candidates))
-        candidate_codes = [item["match_code"] for item in candidates]
-        codes_in_matches = set()
-        for i in range(0, len(candidate_codes), 200):
-            chunk = candidate_codes[i : i + 200]
-            check_res = (
-                supabase.table("matches")
-                .select("match_code")
-                .in_("match_code", chunk)
+
+        # 1. Hiç işlenmemiş maçlar (last_try_at IS NULL) — livedata'dan gelip hiç scrape edilmemiş
+        never_tried = []
+        offset = 0
+        while True:
+            page_resp = (
+                supabase.table("match_queue")
+                .select("match_code, match_url, status, retry_count")
+                .neq("status", "SUCCESS")
+                .neq("status", "PERMANENT_ERROR")
+                .is_("last_try_at", "null")
+                .range(offset, offset + page_size - 1)
                 .execute()
             )
-            codes_in_matches.update(
-                r["match_code"] for r in (check_res.data or []) if r.get("match_code")
-            )
-            if len(candidate_codes) > 200:
-                logger.info("  Checked %d/%d candidates...", min(i + 200, len(candidate_codes)), len(candidate_codes))
-        candidate_map = {item["match_code"]: item for item in candidates}
-        for mc in candidate_codes:
-            if mc not in codes_in_matches:
+            batch = page_resp.data or []
+            never_tried.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        for item in never_tried:
+            mc = item.get("match_code")
+            if mc and mc not in existing_codes:
                 missing_date_count += 1
-                queue.append(candidate_map[mc])
+                queue.append(item)
                 existing_codes.add(mc)
+
+        # 2. Eski MONITORING/ERROR maçlar (last_try > 6 saat önce) — takılmış olabilir
+        stale_cutoff = (now - timedelta(hours=6)).strftime("%Y-%m-%d %H:%M:%S")
+        stale = []
+        offset = 0
+        while True:
+            page_resp = (
+                supabase.table("match_queue")
+                .select("match_code, match_url, status, retry_count")
+                .in_("status", ["MONITORING", "ERROR"])
+                .lt("last_try_at", stale_cutoff)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = page_resp.data or []
+            stale.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        stale_count = 0
+        for item in stale:
+            mc = item.get("match_code")
+            if mc and mc not in existing_codes:
+                stale_count += 1
+                queue.append(item)
+                existing_codes.add(mc)
+
+        logger.info("Added %d never-processed + %d stale matches", missing_date_count, stale_count)
 
     if not queue:
         logger.info(
