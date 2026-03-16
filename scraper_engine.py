@@ -272,9 +272,12 @@ def parse_match_stats(response) -> dict:
         "Toplam Şut": ("shots_home", "shots_away"),
         "İsabetli Şut": ("shots_on_home", "shots_on_away"),
         "Korner": ("corners_home", "corners_away"),
+        "Köşe Vuruşu": ("corners_home", "corners_away"),
         "Topla Oynama": ("possession_home", "possession_away"),
         "Faul": ("fouls_home", "fouls_away"),
+        "Fauller": ("fouls_home", "fouls_away"),
         "Ofsayt": ("offsides_home", "offsides_away"),
+        "Ofsaytlar": ("offsides_home", "offsides_away"),
     }
     stats = {}
 
