@@ -29,6 +29,7 @@ export const PRIMARY_ODDS_FIELDS: OddsKey[] = ['ms_1', 'ms_x', 'ms_2']
 
 export const MATCH_CORE_FIELDS = [
   'id',
+  'match_code',
   'home_team',
   'away_team',
   'match_date',

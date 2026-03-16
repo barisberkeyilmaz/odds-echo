@@ -1,4 +1,5 @@
 import AnalysisDashboard from '@/components/AnalysisDashboard'
+import MLPredictionCard from '@/components/MLPredictionCard'
 import Header from '@/components/Header'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -69,6 +70,10 @@ export default async function AnalysisPage({
               </div>
             ) : null}
           </div>
+        </section>
+
+        <section className="mt-6 animate-in">
+          <MLPredictionCard matchCode={match.match_code} />
         </section>
 
         <AnalysisDashboard match={match} />

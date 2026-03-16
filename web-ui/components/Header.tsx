@@ -24,10 +24,9 @@ const NAV_ITEMS = [
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
         </svg>
     )},
-    { href: '/daily-picks', label: 'Günün Önerileri', shortLabel: 'Öneriler', icon: (
+    { href: '/ml-predictions', label: 'ML Tahmin', shortLabel: 'Tahmin', icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+            <path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.4V11h3a3 3 0 0 1 3 3v1.2c1.2.6 2 1.9 2 3.3a3.5 3.5 0 0 1-7 0c0-1.4.8-2.7 2-3.3V14a1 1 0 0 0-1-1h-8a1 1 0 0 0-1 1v1.2c1.2.6 2 1.9 2 3.3a3.5 3.5 0 0 1-7 0c0-1.4.8-2.7 2-3.3V14a3 3 0 0 1 3-3h3V9.4C8.8 8.8 8 7.5 8 6a4 4 0 0 1 4-4z" />
         </svg>
     )},
 ]

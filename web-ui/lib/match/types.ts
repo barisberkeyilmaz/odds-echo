@@ -26,6 +26,7 @@ export type OddsRecord = Record<OddsKey, number | null>
 
 export type MatchCore = {
   id: number
+  match_code: string
   home_team: string
   away_team: string
   match_date: string
