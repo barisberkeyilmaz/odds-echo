@@ -4,15 +4,15 @@ Mackolik Scraper CLI
 Lokal Python üzerinden tüm scraping işlemlerini yönetir.
 
 Kullanım:
-    python main.py fill-queue    # Sezonlardan maç linklerini kuyruğa ekle
     python main.py update-fixtures [--days-ahead N]  # Livedata ile fikstur guncele
     python main.py run-worker    # Scraper'ı başlat
     python main.py run-monitoring-worker  # MONITORING maçları takip et
     python main.py run-fast-monitoring    # Yakın maçları hızlı takip et
-    python main.py notify-perfect-matches  # Mükemmel eşleşme bildirimleri (Telegram)
+    python main.py backfill      # Son 6 ay stats + H2H backfill
     python main.py status        # Kuyruk durumunu göster
     python main.py reset-errors  # Hatalı kayıtları sıfırla
-    python main.py create-tables # Tabloları oluştur (weekly_fixtures vb.)
+    python main.py repair-queue  # Kuyruktaki bozulmuş statüleri onar
+    python main.py create-tables # Tabloları oluştur
 """
 
 import sys
@@ -49,11 +49,6 @@ def reset_errors():
 
     print(f"✅ {len(result.data)} kayıt sıfırlandı.")
 
-def fill_queue():
-    """Sezonlardan maç linklerini kuyruğa ekler (Sadece Geçmiş)."""
-    from queue_manager import fill_queue_from_db
-    fill_queue_from_db(mode='history')
-
 def update_fixtures():
     from livedata_update_fixtures import run_from_main
     run_from_main(sys.argv[2:])
@@ -78,15 +73,10 @@ def run_fast_monitoring():
     from monitoring_worker import run_monitoring_worker
     run_monitoring_worker(window_hours_before=3, window_hours_after=1, include_missing_dates=False)
 
-def notify_perfect_matches():
-    """Mükemmel eşleşme bildirimlerini gönderir."""
-    from notify_perfect_matches import run_from_main
-    run_from_main(sys.argv[2:])
-
-def generate_daily_picks():
-    """Günün kuponu üretir (Wilson Score tabanlı)."""
-    from generate_daily_picks import run_from_main
-    run_from_main(sys.argv[2:])
+def backfill_data():
+    """Son 6 ay stats + H2H backfill."""
+    from backfill import run_backfill
+    run_backfill(months=6)
 
 def create_tables_cmd():
     """Veritabanı tablolarını oluşturur."""
@@ -107,15 +97,13 @@ def main():
         return
 
     commands = {
-        "fill-queue": fill_queue,
         "run-worker": run_worker,
         "run-monitoring-worker": run_monitoring_worker,
         "run-fast-monitoring": run_fast_monitoring,
-        "notify-perfect-matches": notify_perfect_matches,
+        "backfill": backfill_data,
         "status": show_status,
         "reset-errors": reset_errors,
         "repair-queue": repair_queue,
-        "generate-daily-picks": generate_daily_picks,
         "create-tables": create_tables_cmd,
     }
 
@@ -123,7 +111,7 @@ def main():
         commands[command]()
     else:
         print(f"❌ Bilinmeyen komut: {command}")
-        print(f"Geçerli komutlar: {', '.join(commands.keys())}")
+        print(f"Geçerli komutlar: update-fixtures, {', '.join(commands.keys())}")
         sys.exit(1)
 
 if __name__ == "__main__":

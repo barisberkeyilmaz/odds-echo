@@ -2,9 +2,9 @@ import random
 import time
 from datetime import datetime, timedelta, timezone
 
-from batch_processor import create_driver, force_cleanup
 from config import supabase
 from logging_config import setup_logging
+from scraping_client import create_browser, close_browser
 from scraper_engine import process_full_match
 from utils import is_match_finished, parse_match_date
 
@@ -26,7 +26,6 @@ def run_monitoring_worker(
     window_start = now - timedelta(hours=window_hours_before)
     window_end = now + timedelta(hours=window_hours_after)
 
-    # DB-side filtering: get match_codes within the date window first
     window_start_str = window_start.strftime("%Y-%m-%d %H:%M:%S")
     window_end_str = window_end.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -45,12 +44,10 @@ def run_monitoring_worker(
         logger.info("No matches within date window. Nothing to process.")
         return
 
-    # Get non-SUCCESS, non-PERMANENT_ERROR queue items for those match_codes
     queue = []
     missing_date_count = 0
 
     if window_match_codes:
-        # Supabase .in_() has a limit, chunk it
         code_list = list(window_match_codes)
         for i in range(0, len(code_list), 200):
             chunk = code_list[i : i + 200]
@@ -65,7 +62,6 @@ def run_monitoring_worker(
             queue.extend(response.data or [])
 
     if include_missing_dates:
-        # Also include queue items whose match_code is NOT in matches table
         logger.info("Checking for missing-date matches...")
         all_non_success = (
             supabase.table("match_queue")
@@ -75,7 +71,6 @@ def run_monitoring_worker(
             .execute()
         )
         existing_codes = {item["match_code"] for item in queue}
-        # Filter candidates that need checking
         candidates = [
             item for item in (all_non_success.data or [])
             if item.get("match_code")
@@ -83,7 +78,6 @@ def run_monitoring_worker(
             and item["match_code"] not in window_match_codes
         ]
         logger.info("Found %d candidates to check against matches table", len(candidates))
-        # Batch check: query matches table in chunks instead of one-by-one
         candidate_codes = [item["match_code"] for item in candidates]
         codes_in_matches = set()
         for i in range(0, len(candidate_codes), 200):
@@ -99,7 +93,6 @@ def run_monitoring_worker(
             )
             if len(candidate_codes) > 200:
                 logger.info("  Checked %d/%d candidates...", min(i + 200, len(candidate_codes)), len(candidate_codes))
-        # Add only those NOT found in matches table
         candidate_map = {item["match_code"]: item for item in candidates}
         for mc in candidate_codes:
             if mc not in codes_in_matches:
@@ -124,8 +117,8 @@ def run_monitoring_worker(
     still_monitoring_count = 0
     error_count = 0
 
-    force_cleanup()
-    driver = create_driver()
+    browser = create_browser()
+    page = browser.new_page()
 
     for item in queue:
         match_code = item.get("match_code")
@@ -137,7 +130,7 @@ def run_monitoring_worker(
         retry_count = item.get("retry_count") or 0
 
         try:
-            process_full_match(match_url, driver)
+            process_full_match(match_url, page)
 
             match_res = (
                 supabase.table("matches")
@@ -176,19 +169,23 @@ def run_monitoring_worker(
             ).eq("match_code", match_code).execute()
             if new_status == "PERMANENT_ERROR":
                 logger.warning("Match %s reached max retries, marked PERMANENT_ERROR", match_code)
+
+            # Sayfa çöktüyse yeni sayfa aç
             try:
-                driver.quit()
+                page.close()
+                page = browser.new_page()
             except Exception:
-                pass
-            driver = create_driver()
+                try:
+                    close_browser(browser)
+                except Exception:
+                    pass
+                browser = create_browser()
+                page = browser.new_page()
 
         processed += 1
         time.sleep(random.uniform(0.5, 1.5))
 
-    try:
-        driver.quit()
-    except Exception:
-        pass
+    close_browser(browser)
 
     logger.info(
         "Monitoring summary: processed=%d success=%d monitoring=%d error=%d",
