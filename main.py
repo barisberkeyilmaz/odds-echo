@@ -13,6 +13,8 @@ Kullanım:
     python main.py reset-errors  # Hatalı kayıtları sıfırla
     python main.py repair-queue  # Kuyruktaki bozulmuş statüleri onar
     python main.py create-tables # Tabloları oluştur
+    python main.py train-models  # ML modellerini eğit
+    python main.py predict       # Gelecek maçlar için tahmin üret
 """
 
 import sys
@@ -91,6 +93,16 @@ def create_tables_cmd():
     from create_tables import create_tables
     create_tables()
 
+def train_models_cmd():
+    """ML modellerini eğitir."""
+    from ml.train import train_all_models
+    train_all_models()
+
+def predict_cmd():
+    """Gelecek maçlar için ML tahminleri üretir."""
+    from ml.predict import predict_upcoming
+    predict_upcoming()
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -113,6 +125,8 @@ def main():
         "reset-errors": reset_errors,
         "repair-queue": repair_queue,
         "create-tables": create_tables_cmd,
+        "train-models": train_models_cmd,
+        "predict": predict_cmd,
     }
 
     if command in commands:
