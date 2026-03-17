@@ -8,6 +8,7 @@ import {
   ALL_ODDS_KEYS,
   OUTCOME_LABELS,
   OUTCOME_CATEGORY,
+  OUTCOME_TO_ML,
   DEFAULT_SURPRISE_THRESHOLD,
   MIN_SURPRISE_THRESHOLD,
   MAX_SURPRISE_THRESHOLD,
@@ -19,7 +20,20 @@ import {
 import SearchableSelect, { type SelectOption } from '@/components/SearchableSelect'
 import { useFavoriteLeagues } from '@/lib/useFavoriteLeagues'
 
-type Props = { fixtures: Fixture[] }
+type Props = { fixtures: Fixture[]; dateKey: string }
+
+// ML predictions response tipinden sadece ihtiyaç duyulan kısım
+type MLMarketPred = {
+  market: string
+  probs: Record<string, number>
+}
+type MLMatchPred = {
+  matchCode: string
+  markets: MLMarketPred[]
+}
+
+// matchCode+outcomeKey → ML probability lookup
+type MLProbMap = Record<string, number>
 
 // Country-level priority for sorting groups.
 // Lower = higher priority. Unlisted countries default to 90.
@@ -63,6 +77,7 @@ type HitRateResult = {
 type SurpriseWithStats = SurpriseEntry & HitRateResult & {
   impliedProb: number
   surpriseScore: number
+  mlProb: number | null
 }
 
 type MatchSurpriseGroup = {
@@ -89,16 +104,52 @@ function hitRateClass(hitRate: number, impliedProb: number) {
   return 'text-[var(--accent-loss)]'
 }
 
-export default function SurpriseAnalysisDashboard({ fixtures }: Props) {
+export default function SurpriseAnalysisDashboard({ fixtures, dateKey }: Props) {
   const [threshold, setThreshold] = useState(DEFAULT_SURPRISE_THRESHOLD)
   const [tolerancePct, setTolerancePct] = useState(DEFAULT_TOLERANCE_PCT)
   const [sortBy, setSortBy] = useState<SortKey>('surpriseScore')
   const [showOnlyIyms, setShowOnlyIyms] = useState(false)
   const [statsMap, setStatsMap] = useState<Record<string, HitRateResult>>({})
+  const [mlProbMap, setMlProbMap] = useState<MLProbMap>({})
   const [isLoading, setIsLoading] = useState(false)
   const [expandedMatchIds, setExpandedMatchIds] = useState<Set<number>>(new Set())
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { favorites, addLeague, removeLeague, clearAll: clearLeagues } = useFavoriteLeagues()
+
+  // ML predictions — dateKey değişince bir kez çek
+  useEffect(() => {
+    async function fetchML() {
+      try {
+        const res = await fetch(`/api/matches/ml-predictions?date=${dateKey}`)
+        if (!res.ok) return
+        const data = await res.json()
+        const matches: MLMatchPred[] = data.matches ?? []
+
+        const map: MLProbMap = {}
+        for (const m of matches) {
+          // matchCode → fixture id eşlemesi
+          const fixture = fixtures.find((f) => f.match_code === m.matchCode)
+          if (!fixture) continue
+
+          for (const mkt of m.markets) {
+            // Her outcome key için ML probability'yi eşle
+            for (const [oddsKey, mlInfo] of Object.entries(OUTCOME_TO_ML)) {
+              if (mlInfo.market === mkt.market) {
+                const prob = mkt.probs[mlInfo.probKey]
+                if (prob != null) {
+                  map[`${fixture.id}_${oddsKey}`] = prob
+                }
+              }
+            }
+          }
+        }
+        setMlProbMap(map)
+      } catch {
+        // silent
+      }
+    }
+    fetchML()
+  }, [dateKey, fixtures])
 
   // All unique league keys sorted by country priority
   const allLeagueKeys = useMemo(() => {
@@ -213,17 +264,18 @@ export default function SurpriseAnalysisDashboard({ fixtures }: Props) {
     }
   }, [allEntries, tolerancePct])
 
-  // Build enriched entries with stats
+  // Build enriched entries with stats + ML
   const enrichedEntries = useMemo((): SurpriseWithStats[] => {
     return allEntries.map((entry) => {
       const key = `${entry.matchId}_${entry.outcomeKey}`
       const stat = statsMap[key] ?? { totalSimilar: 0, hitCount: 0, hitRate: 0 }
       const impliedProb = 1 / entry.oddValue
       const surpriseScore = stat.hitRate > 0 ? stat.hitRate / impliedProb : 0
+      const mlProb = mlProbMap[key] ?? null
 
-      return { ...entry, ...stat, impliedProb, surpriseScore }
+      return { ...entry, ...stat, impliedProb, surpriseScore, mlProb }
     })
-  }, [allEntries, statsMap])
+  }, [allEntries, statsMap, mlProbMap])
 
   // Group by match and sort
   const matchGroups = useMemo((): MatchSurpriseGroup[] => {
@@ -548,6 +600,7 @@ function MatchCard({ group, isExpanded, isLoading, onToggle }: MatchCardProps) {
                   <th className="text-right py-2 px-2 font-medium">Tutan</th>
                   <th className="text-right py-2 px-2 font-medium">Tutma %</th>
                   <th className="text-right py-2 px-2 font-medium">Beklenen %</th>
+                  <th className="text-right py-2 px-2 font-medium">ML %</th>
                   <th className="text-right py-2 px-2 font-medium">Skor</th>
                 </tr>
               </thead>
@@ -591,6 +644,15 @@ function MatchCard({ group, isExpanded, isLoading, onToggle }: MatchCardProps) {
                       </td>
                       <td className="py-2 px-2 font-mono tabular-nums text-right text-[var(--text-muted)]">
                         %{implied.toFixed(1)}
+                      </td>
+                      <td className="py-2 px-2 font-mono tabular-nums text-right">
+                        {entry.mlProb != null ? (
+                          <span className={`font-bold ${entry.mlProb > entry.impliedProb ? 'text-[var(--accent-blue)]' : 'text-[var(--text-muted)]'}`}>
+                            %{(entry.mlProb * 100).toFixed(1)}
+                          </span>
+                        ) : (
+                          <span className="text-[var(--text-muted)]">—</span>
+                        )}
                       </td>
                       <td className="py-2 px-2 text-right">
                         {isLoading ? (
@@ -641,6 +703,11 @@ function MatchCard({ group, isExpanded, isLoading, onToggle }: MatchCardProps) {
                           %{(entry.hitRate * 100).toFixed(1)}
                         </span>
                         <span className="text-[var(--text-muted)]">/ %{implied.toFixed(1)}</span>
+                        {entry.mlProb != null && (
+                          <span className={`font-mono text-[10px] font-bold px-1 py-0.5 rounded ${entry.mlProb > entry.impliedProb ? 'bg-[var(--accent-blue-bg)] text-[var(--accent-blue)]' : 'bg-[var(--bg-secondary)] text-[var(--text-muted)]'}`}>
+                            ML %{(entry.mlProb * 100).toFixed(0)}
+                          </span>
+                        )}
                         {entry.surpriseScore > 0 && (
                           <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded ${scoreBadgeClass(entry.surpriseScore)}`}>
                             {entry.surpriseScore.toFixed(2)}
@@ -682,6 +749,11 @@ function SurprisePill({ entry, isLoading }: { entry: SurpriseWithStats; isLoadin
         <>
           <span className="font-mono">%{(entry.hitRate * 100).toFixed(0)}</span>
           <span className="font-mono font-bold">{entry.surpriseScore.toFixed(1)}</span>
+          {entry.mlProb != null && (
+            <span className={`font-mono text-[9px] ${entry.mlProb > entry.impliedProb ? 'text-[var(--accent-blue)]' : 'opacity-50'}`}>
+              ML{(entry.mlProb * 100).toFixed(0)}
+            </span>
+          )}
         </>
       ) : null}
     </span>

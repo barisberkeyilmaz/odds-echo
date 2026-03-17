@@ -52,6 +52,26 @@ export const OUTCOME_CATEGORY: Record<OddsKey, string> = {
   tg_0_1: 'TG', tg_2_3: 'TG', tg_4_5: 'TG', tg_6_plus: 'TG',
 }
 
+/**
+ * Outcome key → ML market + probability key eşlemesi.
+ * predict.py'deki _market_labels ile uyumlu:
+ *   ms: ["1","X","2"], kg: ["Yok","Var"], au25: ["Alt","Üst"],
+ *   tg: ["0-1","2-3","4+"], iy: ["1","X","2"]
+ */
+export const OUTCOME_TO_ML: Partial<Record<OddsKey, { market: string; probKey: string }>> = {
+  ms_1: { market: 'ms', probKey: '1' },
+  ms_x: { market: 'ms', probKey: 'X' },
+  ms_2: { market: 'ms', probKey: '2' },
+  kg_var: { market: 'kg', probKey: 'Var' },
+  kg_yok: { market: 'kg', probKey: 'Yok' },
+  au_25_alt: { market: 'au25', probKey: 'Alt' },
+  au_25_ust: { market: 'au25', probKey: 'Üst' },
+  tg_0_1: { market: 'tg', probKey: '0-1' },
+  tg_2_3: { market: 'tg', probKey: '2-3' },
+  tg_4_5: { market: 'tg', probKey: '4+' },
+  tg_6_plus: { market: 'tg', probKey: '4+' },
+}
+
 export const DEFAULT_SURPRISE_THRESHOLD = 10.0
 export const MIN_SURPRISE_THRESHOLD = 0
 export const MAX_SURPRISE_THRESHOLD = 20.0
