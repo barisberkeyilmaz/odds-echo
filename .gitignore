@@ -10,3 +10,6 @@ scraper.log
 scraper.log.*
 .env.local
 .env*.local
+
+# ML model artifacts
+ml_models/
