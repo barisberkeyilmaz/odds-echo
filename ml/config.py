@@ -27,10 +27,10 @@ MARKETS = ["ms", "kg", "au25", "tg", "iy"]
 # ── Value bet eşiği ───────────────────────────────────────────────
 MIN_EDGE = 0.05
 
-# ── Temporal split oranları ────────────────────────────────────────
-TRAIN_RATIO = 0.80
-VAL_RATIO = 0.10
-# TEST = kalan %10
+# ── Temporal split (tarih bazlı) ──────────────────────────────────
+# Test: son TEST_MONTHS ay, Val: ondan önceki VAL_MONTHS ay, Train: geri kalan
+TEST_MONTHS = 6
+VAL_MONTHS = 2
 
 # ── Supabase pagination ───────────────────────────────────────────
 PAGE_SIZE = 1000

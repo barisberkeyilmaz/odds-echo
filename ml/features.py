@@ -181,40 +181,14 @@ def _form_score(form_str):
 
 
 def _add_h2h_features(df: pd.DataFrame) -> pd.DataFrame:
-    """match_h2h verilerinden feature'lar."""
+    """match_h2h verilerinden feature'lar.
 
-    # Form skoru
-    df["form_home_score"] = df["form_home"].apply(_form_score)
-    df["form_away_score"] = df["form_away"].apply(_form_score)
-    df["form_diff"] = df["form_home_score"] - df["form_away_score"]
-
-    # Sıralama ve puan farkları
-    df["standing_diff"] = df["standing_home"] - df["standing_away"]
-    df["points_diff"] = df["points_home"] - df["points_away"]
-
-    # KG combined
-    df["kg_pct_combined"] = df["kg_pct_home"] * df["kg_pct_away"] / 10000.0
-
-    # TG dağılımı flatten (JSONB → 8 feature)
-    for side in ["home", "away"]:
-        col = f"tg_dist_{side}"
-        for bucket in ["0-1", "2-3", "4-5", "6+"]:
-            feat_name = f"tg_dist_{side}_{bucket.replace('-', '_').replace('+', 'plus')}_pct"
-            df[feat_name] = df[col].apply(
-                lambda x: _extract_tg_pct(x, bucket)
-            )
-
-    # H2H özet
-    df["h2h_home_win_pct"] = df["h2h_total"].apply(
-        lambda x: _extract_h2h_field(x, "home_wins", "total")
-    )
-    df["h2h_draw_pct"] = df["h2h_total"].apply(
-        lambda x: _extract_h2h_field(x, "draws", "total")
-    )
-    df["h2h_total_matches"] = df["h2h_total"].apply(
-        lambda x: _safe_json_get(x, "total")
-    )
-
+    LEAKAGE UYARISI: Tüm H2H verileri maç sonrası arşivden scrape edildiği
+    için form, sıralama, KG%, AU%, TG dağılımı ve H2H özeti maçın kendi
+    sonucunu içeriyor. Backtest/eğitimde kullanılamaz.
+    İleride maç öncesi canlı scrape yapılırsa bu fonksiyon aktifleştirilebilir.
+    """
+    # Şimdilik H2H feature üretilmiyor — tüm H2H sütunları exclude listesinde.
     return df
 
 
@@ -383,12 +357,28 @@ def _add_contextual_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_feature_columns(df: pd.DataFrame) -> list:
     """Model'e girecek feature sütunlarını belirle."""
+    # Raw match_stats sütunları maç sonu istatistiği → leakage.
+    # Sadece rolling türevleri (home_avg5_*, away_avg10_* vb.) kullanılabilir.
+    from ml.config import STAT_COLUMNS_HOME, STAT_COLUMNS_AWAY
+    raw_stats = tuple(STAT_COLUMNS_HOME + STAT_COLUMNS_AWAY)
+
+    # Tüm H2H sütunları maç sonrası scrape → leakage.
+    h2h_raw = (
+        "form_home", "form_away", "form_home_score", "form_away_score", "form_diff",
+        "standing_home", "standing_away", "standing_diff",
+        "points_home", "points_away", "points_diff",
+        "kg_pct_home", "kg_pct_away", "kg_pct_combined",
+        "au25_over_pct_home", "au25_over_pct_away",
+        "h2h_total", "h2h_total_matches", "h2h_home_win_pct", "h2h_draw_pct",
+        "tg_dist_home", "tg_dist_away",
+        "referee_stats", "scorers_home", "scorers_away",
+    )
+
     exclude_prefixes = ("target_", "_", "id", "match_code", "home_team", "away_team",
                         "league", "season", "match_date", "score_ft", "score_ht",
-                        "status", "form_home", "form_away",
-                        "tg_dist_home", "tg_dist_away",
-                        "h2h_total", "scorers_home", "scorers_away",
-                        "referee_stats", "scraped_at")
+                        "status", "scraped_at",
+                        "tg_dist_",  # tg_dist_home_* türev feature'ları da dahil
+                        ) + raw_stats + h2h_raw
 
     feature_cols = []
     for col in df.columns:

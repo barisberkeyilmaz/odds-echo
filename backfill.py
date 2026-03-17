@@ -47,14 +47,15 @@ def run_backfill(months: int = 6, batch_size: int = 200):
                 except Exception as e:
                     print(f"      Stats error {match_code}: {e}")
 
-            # H2H backfill
+            # H2H backfill — pre-match kaydı korumak için insert (upsert değil).
+            # has_h2h=False ise zaten kayıt yok, insert güvenli.
             if not match.get("has_h2h"):
                 try:
                     from h2h_scraper import scrape_h2h
                     h2h = scrape_h2h(match_code)
                     if h2h:
                         h2h["match_code"] = match_code
-                        supabase.table("match_h2h").upsert(h2h, on_conflict="match_code").execute()
+                        supabase.table("match_h2h").insert(h2h).execute()
                         total_h2h += 1
                 except Exception as e:
                     print(f"      H2H error {match_code}: {e}")

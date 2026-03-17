@@ -231,13 +231,16 @@ def process_full_match(match_url, page):
         except Exception as e:
             print(f"   Stats failed for {match_code}: {e}")
 
-    # H2H → maç öncesi de anlamlı (form, puan durumu), her zaman çek
+    # H2H → pre-match snapshot'ı koru, üzerine yazma.
+    # İlk scrape (maç öncesi) kaydedilir, sonraki çağrılar mevcut kaydı değiştirmez.
     try:
         from h2h_scraper import scrape_h2h
-        h2h_data = scrape_h2h(match_code)
-        if h2h_data:
-            h2h_data["match_code"] = match_code
-            supabase.table("match_h2h").upsert(h2h_data, on_conflict="match_code").execute()
+        existing = supabase.table("match_h2h").select("match_code").eq("match_code", match_code).execute()
+        if not existing.data:
+            h2h_data = scrape_h2h(match_code)
+            if h2h_data:
+                h2h_data["match_code"] = match_code
+                supabase.table("match_h2h").insert(h2h_data).execute()
     except Exception as e:
         print(f"   H2H failed for {match_code}: {e}")
 
