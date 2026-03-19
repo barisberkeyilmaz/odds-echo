@@ -22,10 +22,27 @@ LGBM_PARAMS = {
 EARLY_STOPPING_ROUNDS = 50
 
 # ── Bahis marketleri ───────────────────────────────────────────────
-MARKETS = ["ms", "kg", "au25", "tg", "iy"]
+MARKETS = ["ms", "kg", "au25", "tg", "iyms"]
 
-# ── Value bet eşiği ───────────────────────────────────────────────
-MIN_EDGE = 0.05
+# ── Confidence threshold sabitleri ─────────────────────────────────
+# Precision@confidence hesabı için sweep aralığı
+CONFIDENCE_THRESHOLDS = [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
+
+# Pazar bazlı minimum hedef precision (baseline üstünde)
+TARGET_PRECISION = {
+    "ms":   0.60,   # 3-way baseline ~33%
+    "kg":   0.60,   # binary baseline ~50%, daha fazla pick icin dusuruldu
+    "au25": 0.60,   # binary baseline ~50%, daha fazla pick icin dusuruldu
+    "tg":   0.45,   # 4-way baseline ~25%
+    "iyms": 0.30,   # 9-way baseline ~11%
+}
+
+# Confidence seviye farkları (threshold'a göre)
+CONFIDENCE_LEVEL_OFFSETS = {
+    "cok_emin": 0.15,
+    "emin": 0.08,
+    "olasi": 0.0,
+}
 
 # ── Temporal split (tarih bazlı) ──────────────────────────────────
 # Test: son TEST_MONTHS ay, Val: ondan önceki VAL_MONTHS ay, Train: geri kalan

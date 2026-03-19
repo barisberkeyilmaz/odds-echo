@@ -7,19 +7,27 @@ import Link from 'next/link'
 // Tipler
 // ---------------------------------------------------------------------------
 
-type ValueBet = {
+type ConfidentPick = {
   market: string
   outcome: string
-  modelProb: number
-  impliedProb: number
-  edge: number
+  confidence: number
+  threshold: number
+  confidenceLevel: string
+  impliedProb: number | null
 }
 
 type MarketPrediction = {
   market: string
   probs: Record<string, number>
   predicted: string
-  valueBets: Array<{ outcome: string; modelProb: number; impliedProb: number; edge: number }> | null
+  confidence: number
+  confidentPicks: Array<{
+    outcome: string
+    confidence: number
+    threshold: number
+    confidenceLevel: string
+    impliedProb: number | null
+  }> | null
 }
 
 type MatchData = {
@@ -31,7 +39,7 @@ type MatchData = {
   matchDate: string
   isPlayed: boolean
   markets: MarketPrediction[]
-  valueBets: ValueBet[]
+  confidentPicks: ConfidentPick[]
 }
 
 type ApiResponse = {
@@ -49,7 +57,7 @@ const MARKET_LABELS: Record<string, string> = {
   kg: 'KG',
   au25: 'AU 2.5',
   tg: 'TG',
-  iy: 'İY',
+  iyms: 'IY/MS',
 }
 
 const MS_LABELS: Record<string, string> = {
@@ -59,10 +67,16 @@ const MS_LABELS: Record<string, string> = {
 }
 
 const SECONDARY_LABELS: Record<string, Record<string, string>> = {
-  kg: { var: 'Var', yok: 'Yok' },
-  au25: { alt: 'Alt', ust: 'Üst' },
+  kg: { Yok: 'Yok', Var: 'Var' },
+  au25: { Alt: 'Alt', Ust: 'Ust' },
   tg: { '0-1': '0-1', '2-3': '2-3', '4-5': '4-5', '6+': '6+' },
-  iy: { '1': 'Ev', 'X': 'X', '2': 'Dep' },
+  iyms: { '1/1': '1/1', '1/X': '1/X', '1/2': '1/2', 'X/1': 'X/1', 'X/X': 'X/X', 'X/2': 'X/2', '2/1': '2/1', '2/X': '2/X', '2/2': '2/2' },
+}
+
+const CONFIDENCE_LEVEL_LABELS: Record<string, { text: string; color: string; bgColor: string }> = {
+  cok_emin: { text: 'COK EMIN', color: 'var(--accent-win)', bgColor: 'var(--accent-win-bg)' },
+  emin: { text: 'EMIN', color: 'var(--accent-blue)', bgColor: 'color-mix(in srgb, var(--accent-blue) 15%, transparent)' },
+  olasi: { text: 'OLASI', color: 'var(--accent-draw)', bgColor: 'color-mix(in srgb, var(--accent-draw) 15%, transparent)' },
 }
 
 function getOutcomeLabel(market: string, outcome: string): string {
@@ -71,7 +85,7 @@ function getOutcomeLabel(market: string, outcome: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Yardımcılar
+// Yardimcilar
 // ---------------------------------------------------------------------------
 
 function formatTime(dateStr: string) {
@@ -83,13 +97,13 @@ function formatTime(dateStr: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Alt Bileşenler
+// Alt Bilesenler
 // ---------------------------------------------------------------------------
 
-/** MS olasılık barları — büyük ve net */
-function MSBars({ probs, valueBets }: { probs: Record<string, number>; valueBets: Array<{ outcome: string }> | null }) {
+/** MS olasilik barlari */
+function MSBars({ probs, confidentPicks }: { probs: Record<string, number>; confidentPicks: Array<{ outcome: string }> | null }) {
   const order = ['1', 'X', '2']
-  const valueOutcomes = new Set((valueBets ?? []).map((v) => v.outcome))
+  const confidentOutcomes = new Set((confidentPicks ?? []).map((cp) => cp.outcome))
   const maxProb = Math.max(...Object.values(probs))
 
   return (
@@ -98,8 +112,8 @@ function MSBars({ probs, valueBets }: { probs: Record<string, number>; valueBets
         const prob = probs[key] ?? 0
         const pct = Math.round(prob * 100)
         const isMax = prob === maxProb
-        const isValue = valueOutcomes.has(key)
-        const barColor = isValue
+        const isConfident = confidentOutcomes.has(key)
+        const barColor = isConfident
           ? 'var(--accent-win)'
           : isMax
             ? 'var(--accent-blue)'
@@ -111,11 +125,11 @@ function MSBars({ probs, valueBets }: { probs: Record<string, number>; valueBets
             <div className="flex-1 h-2 rounded-full bg-[var(--bg-primary)] overflow-hidden">
               <div
                 className="h-full rounded-full transition-all"
-                style={{ width: `${pct}%`, backgroundColor: barColor, opacity: isMax || isValue ? 1 : 0.25 }}
+                style={{ width: `${pct}%`, backgroundColor: barColor, opacity: isMax || isConfident ? 1 : 0.25 }}
               />
             </div>
             <span className={`font-mono tabular-nums text-xs w-10 text-right shrink-0 ${
-              isValue ? 'text-[var(--accent-win)] font-bold' : isMax ? 'text-[var(--text-primary)] font-semibold' : 'text-[var(--text-muted)]'
+              isConfident ? 'text-[var(--accent-win)] font-bold' : isMax ? 'text-[var(--text-primary)] font-semibold' : 'text-[var(--text-muted)]'
             }`}>
               {pct}%
             </span>
@@ -126,34 +140,29 @@ function MSBars({ probs, valueBets }: { probs: Record<string, number>; valueBets
   )
 }
 
-/** Diğer marketler — tek satırda en olası sonuç */
-function SecondaryMarketsSummary({ markets, valueBets }: { markets: MarketPrediction[]; valueBets: ValueBet[] }) {
+/** Diger marketler — tek satirda en olasi sonuc */
+function SecondaryMarketsSummary({ markets, confidentPicks }: { markets: MarketPrediction[]; confidentPicks: ConfidentPick[] }) {
   const secondary = markets.filter((m) => m.market !== 'ms')
   if (secondary.length === 0) return null
 
-  const valueMap = new Map<string, ValueBet>()
-  for (const vb of valueBets) {
-    valueMap.set(`${vb.market}:${vb.outcome}`, vb)
-  }
+  const confidentMap = new Set(confidentPicks.map((cp) => `${cp.market}:${cp.outcome}`))
 
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1">
       {secondary.map((m) => {
-        // En olası sonuç
         const entries = Object.entries(m.probs).sort((a, b) => b[1] - a[1])
         if (entries.length === 0) return null
         const [bestOutcome, bestProb] = entries[0]
         const pct = Math.round(bestProb * 100)
-        const vbKey = `${m.market}:${bestOutcome}`
-        const isValue = valueMap.has(vbKey)
+        const isConfident = confidentMap.has(`${m.market}:${bestOutcome}`)
 
         return (
           <span key={m.market} className="flex items-center gap-1 text-xs">
             <span className="text-[var(--text-muted)]">{MARKET_LABELS[m.market] ?? m.market}</span>
-            <span className={`font-medium ${isValue ? 'text-[var(--accent-win)]' : 'text-[var(--text-secondary)]'}`}>
+            <span className={`font-medium ${isConfident ? 'text-[var(--accent-win)]' : 'text-[var(--text-secondary)]'}`}>
               {getOutcomeLabel(m.market, bestOutcome)}
             </span>
-            <span className={`font-mono tabular-nums ${isValue ? 'text-[var(--accent-win)]' : 'text-[var(--text-muted)]'}`}>
+            <span className={`font-mono tabular-nums ${isConfident ? 'text-[var(--accent-win)]' : 'text-[var(--text-muted)]'}`}>
               %{pct}
             </span>
           </span>
@@ -163,11 +172,20 @@ function SecondaryMarketsSummary({ markets, valueBets }: { markets: MarketPredic
   )
 }
 
-/** Maç kartı */
+/** Mac karti */
 function MatchCard({ match }: { match: MatchData }) {
-  const hasValue = match.valueBets.length > 0
+  const hasConfident = match.confidentPicks.length > 0
   const msMarket = match.markets.find((m) => m.market === 'ms')
-  const msValueBets = msMarket?.valueBets ?? null
+  const msConfidentPicks = msMarket?.confidentPicks ?? null
+
+  // En yuksek seviye badge
+  const bestLevel = hasConfident
+    ? (match.confidentPicks.find((cp) => cp.confidenceLevel === 'cok_emin')?.confidenceLevel
+      ?? match.confidentPicks.find((cp) => cp.confidenceLevel === 'emin')?.confidenceLevel
+      ?? 'olasi')
+    : null
+
+  const badgeStyle = bestLevel ? CONFIDENCE_LEVEL_LABELS[bestLevel] : null
 
   return (
     <Link
@@ -176,11 +194,11 @@ function MatchCard({ match }: { match: MatchData }) {
       className="block group"
     >
       <div className={`bg-[var(--bg-secondary)] border rounded-lg p-4 transition-all group-hover:border-[var(--accent-blue)] group-hover:shadow-[var(--glow-blue)] ${
-        hasValue
+        hasConfident
           ? 'border-[color-mix(in_srgb,var(--accent-win)_30%,var(--border-primary))]'
           : 'border-[var(--border-primary)]'
       }`}>
-        {/* Başlık */}
+        {/* Baslik */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
             <p className="text-sm font-medium text-[var(--text-primary)] group-hover:text-[var(--accent-blue)] transition-colors">
@@ -194,9 +212,16 @@ function MatchCard({ match }: { match: MatchData }) {
             <p className="text-xs text-[var(--text-tertiary)] mt-0.5">{match.league}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {hasValue && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-[var(--accent-win-bg)] text-[var(--accent-win)] border border-[color-mix(in_srgb,var(--accent-win)_20%,transparent)]">
-                VALUE
+            {badgeStyle && (
+              <span
+                className="text-[10px] px-2 py-0.5 rounded-full font-semibold border"
+                style={{
+                  color: badgeStyle.color,
+                  backgroundColor: badgeStyle.bgColor,
+                  borderColor: `color-mix(in srgb, ${badgeStyle.color} 20%, transparent)`,
+                }}
+              >
+                {badgeStyle.text}
               </span>
             )}
             <span className="text-xs font-mono tabular-nums text-[var(--text-muted)]">
@@ -205,33 +230,35 @@ function MatchCard({ match }: { match: MatchData }) {
           </div>
         </div>
 
-        {/* MS olasılık barları */}
+        {/* MS olasilik barlari */}
         {msMarket && (
-          <MSBars probs={msMarket.probs} valueBets={msValueBets} />
+          <MSBars probs={msMarket.probs} confidentPicks={msConfidentPicks} />
         )}
 
-        {/* Diğer marketler özet */}
+        {/* Diger marketler ozet */}
         <div className="mt-3 pt-2 border-t border-[var(--border-subtle)]">
-          <SecondaryMarketsSummary markets={match.markets} valueBets={match.valueBets} />
+          <SecondaryMarketsSummary markets={match.markets} confidentPicks={match.confidentPicks} />
         </div>
 
-        {/* Value bet satırları */}
-        {hasValue && (
+        {/* Emin tahmin satirlari */}
+        {hasConfident && (
           <div className="mt-2 pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1">
-            {match.valueBets.map((vb, i) => (
-              <div key={`${vb.market}-${vb.outcome}-${i}`} className="flex items-center gap-2 text-[11px]">
-                <span className="text-[var(--accent-win)] font-semibold">VALUE</span>
-                <span className="text-[var(--text-secondary)]">
-                  {MARKET_LABELS[vb.market]} {getOutcomeLabel(vb.market, vb.outcome)}
-                </span>
-                <span className="font-mono tabular-nums text-[var(--text-muted)]">
-                  %{Math.round(vb.modelProb * 100)} vs %{Math.round(vb.impliedProb * 100)}
-                </span>
-                <span className="font-mono tabular-nums text-[var(--accent-win)] font-semibold">
-                  +{(vb.edge * 100).toFixed(1)}%
-                </span>
-              </div>
-            ))}
+            {match.confidentPicks.map((cp, i) => {
+              const levelInfo = CONFIDENCE_LEVEL_LABELS[cp.confidenceLevel] ?? CONFIDENCE_LEVEL_LABELS.olasi
+              return (
+                <div key={`${cp.market}-${cp.outcome}-${i}`} className="flex items-center gap-2 text-[11px]">
+                  <span className="font-semibold" style={{ color: levelInfo.color }}>
+                    {levelInfo.text}
+                  </span>
+                  <span className="text-[var(--text-secondary)]">
+                    {MARKET_LABELS[cp.market]} {getOutcomeLabel(cp.market, cp.outcome)}
+                  </span>
+                  <span className="font-mono tabular-nums font-semibold" style={{ color: levelInfo.color }}>
+                    %{Math.round(cp.confidence * 100)}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -269,10 +296,10 @@ export default function MLPredictionsDashboard({ dateKey }: { dateKey: string })
 
   const stats = useMemo(() => {
     if (!data || data.matches.length === 0) return null
-    const valueBetCount = data.matches.reduce((sum, m) => sum + m.valueBets.length, 0)
-    const allEdges = data.matches.flatMap((m) => m.valueBets.map((vb) => vb.edge))
-    const maxEdge = allEdges.length > 0 ? Math.max(...allEdges) : 0
-    return { totalMatches: data.matches.length, valueBetCount, maxEdge }
+    const confidentCount = data.matches.reduce((sum, m) => sum + m.confidentPicks.length, 0)
+    const allConfs = data.matches.flatMap((m) => m.confidentPicks.map((cp) => cp.confidence))
+    const maxConf = allConfs.length > 0 ? Math.max(...allConfs) : 0
+    return { totalMatches: data.matches.length, confidentCount, maxConf }
   }, [data])
 
   const isEmpty = !loading && (!data || data.matches.length === 0)
@@ -283,34 +310,34 @@ export default function MLPredictionsDashboard({ dateKey }: { dateKey: string })
       {loading && (
         <div className="text-center py-16">
           <div className="inline-block w-6 h-6 border-2 border-[var(--accent-blue)] border-t-transparent rounded-full animate-spin mb-3" />
-          <p className="text-sm text-[var(--text-muted)]">ML tahminleri yükleniyor...</p>
+          <p className="text-sm text-[var(--text-muted)]">ML tahminleri yukleniyor...</p>
         </div>
       )}
 
       {/* Empty */}
       {isEmpty && (
         <div className="text-center py-16 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)]">
-          <p className="text-sm text-[var(--text-tertiary)]">Bu tarih için ML tahmini bulunamadı.</p>
+          <p className="text-sm text-[var(--text-tertiary)]">Bu tarih icin ML tahmini bulunamadi.</p>
         </div>
       )}
 
       {/* Data */}
       {!loading && data && stats && (
         <>
-          {/* Özet kartlar */}
+          {/* Ozet kartlar */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-4 py-3">
-              <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Maç</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Mac</p>
               <p className="text-xl font-bold font-mono tabular-nums text-[var(--text-primary)]">{stats.totalMatches}</p>
             </div>
             <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-4 py-3">
-              <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Value Bet</p>
-              <p className={`text-xl font-bold font-mono tabular-nums ${stats.valueBetCount > 0 ? 'text-[var(--accent-win)]' : 'text-[var(--text-primary)]'}`}>{stats.valueBetCount}</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Emin Tahmin</p>
+              <p className={`text-xl font-bold font-mono tabular-nums ${stats.confidentCount > 0 ? 'text-[var(--accent-win)]' : 'text-[var(--text-primary)]'}`}>{stats.confidentCount}</p>
             </div>
             <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-4 py-3">
-              <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Max Edge</p>
-              <p className={`text-xl font-bold font-mono tabular-nums ${stats.maxEdge > 0 ? 'text-[var(--accent-win)]' : 'text-[var(--text-primary)]'}`}>
-                {stats.maxEdge > 0 ? `%${(stats.maxEdge * 100).toFixed(1)}` : '—'}
+              <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">En Yuksek Guven</p>
+              <p className={`text-xl font-bold font-mono tabular-nums ${stats.maxConf > 0 ? 'text-[var(--accent-win)]' : 'text-[var(--text-primary)]'}`}>
+                {stats.maxConf > 0 ? `%${Math.round(stats.maxConf * 100)}` : '\u2014'}
               </p>
             </div>
           </div>
@@ -322,7 +349,7 @@ export default function MLPredictionsDashboard({ dateKey }: { dateKey: string })
             </p>
           )}
 
-          {/* Maç kartları */}
+          {/* Mac kartlari */}
           <div className="space-y-3">
             {data.matches.map((match) => (
               <MatchCard key={match.matchCode} match={match} />

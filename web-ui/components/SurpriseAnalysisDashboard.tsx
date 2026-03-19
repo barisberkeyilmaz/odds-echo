@@ -8,6 +8,7 @@ import {
   ALL_ODDS_KEYS,
   OUTCOME_LABELS,
   OUTCOME_CATEGORY,
+  ODDS_KEY_TO_ML,
   DEFAULT_SURPRISE_THRESHOLD,
   MIN_SURPRISE_THRESHOLD,
   MAX_SURPRISE_THRESHOLD,
@@ -19,7 +20,7 @@ import {
 import SearchableSelect, { type SelectOption } from '@/components/SearchableSelect'
 import { useFavoriteLeagues } from '@/lib/useFavoriteLeagues'
 
-type Props = { fixtures: Fixture[] }
+type Props = { fixtures: Fixture[]; dateKey: string }
 
 // Country-level priority for sorting groups.
 // Lower = higher priority. Unlisted countries default to 90.
@@ -63,7 +64,25 @@ type HitRateResult = {
 type SurpriseWithStats = SurpriseEntry & HitRateResult & {
   impliedProb: number
   surpriseScore: number
+  mlModelProb: number | null
+  mlSurpriseScore: number | null
 }
+
+/** ML predictions API response types */
+type MLMarketPred = {
+  market: string
+  probs: Record<string, number>
+  predicted: string
+  confidence: number
+}
+
+type MLMatchPred = {
+  matchCode: string
+  markets: MLMarketPred[]
+}
+
+/** match_code → oddsKey → modelProb lookup */
+type MLProbMap = Map<string, Map<string, number>>
 
 type MatchSurpriseGroup = {
   fixture: Fixture
@@ -71,7 +90,7 @@ type MatchSurpriseGroup = {
   bestScore: number
 }
 
-type SortKey = 'surpriseScore' | 'hitRate' | 'odds'
+type SortKey = 'surpriseScore' | 'hitRate' | 'mlScore' | 'odds'
 
 function formatTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
@@ -89,16 +108,50 @@ function hitRateClass(hitRate: number, impliedProb: number) {
   return 'text-[var(--accent-loss)]'
 }
 
-export default function SurpriseAnalysisDashboard({ fixtures }: Props) {
+export default function SurpriseAnalysisDashboard({ fixtures, dateKey }: Props) {
   const [threshold, setThreshold] = useState(DEFAULT_SURPRISE_THRESHOLD)
   const [tolerancePct, setTolerancePct] = useState(DEFAULT_TOLERANCE_PCT)
   const [sortBy, setSortBy] = useState<SortKey>('surpriseScore')
   const [showOnlyIyms, setShowOnlyIyms] = useState(false)
   const [statsMap, setStatsMap] = useState<Record<string, HitRateResult>>({})
+  const [mlProbMap, setMlProbMap] = useState<MLProbMap>(new Map())
   const [isLoading, setIsLoading] = useState(false)
   const [expandedMatchIds, setExpandedMatchIds] = useState<Set<number>>(new Set())
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { favorites, addLeague, removeLeague, clearAll: clearLeagues } = useFavoriteLeagues()
+
+  // ML predictions fetch
+  useEffect(() => {
+    async function fetchMLPredictions() {
+      try {
+        const res = await fetch(`/api/matches/ml-predictions?date=${dateKey}`)
+        if (!res.ok) return
+        const data = await res.json()
+        const matches: MLMatchPred[] = data.matches ?? []
+
+        const probMap: MLProbMap = new Map()
+        for (const match of matches) {
+          const oddsKeyMap = new Map<string, number>()
+          for (const mkt of match.markets) {
+            // Map ML market outcomes to OddsKeys
+            for (const [outcomeLabel, prob] of Object.entries(mkt.probs)) {
+              // Find the OddsKey that maps to this market+outcome
+              for (const [oddsKey, mlInfo] of Object.entries(ODDS_KEY_TO_ML)) {
+                if (mlInfo && mlInfo.market === mkt.market && mlInfo.outcome === outcomeLabel) {
+                  oddsKeyMap.set(oddsKey, prob)
+                }
+              }
+            }
+          }
+          probMap.set(match.matchCode, oddsKeyMap)
+        }
+        setMlProbMap(probMap)
+      } catch {
+        // silent
+      }
+    }
+    fetchMLPredictions()
+  }, [dateKey])
 
   // All unique league keys sorted by country priority
   const allLeagueKeys = useMemo(() => {
@@ -213,17 +266,31 @@ export default function SurpriseAnalysisDashboard({ fixtures }: Props) {
     }
   }, [allEntries, tolerancePct])
 
-  // Build enriched entries with stats
+  // Build enriched entries with stats + ML
   const enrichedEntries = useMemo((): SurpriseWithStats[] => {
+    // Build matchId → match_code lookup
+    const idToCode = new Map<number, string>()
+    for (const f of filteredFixtures) {
+      idToCode.set(f.id, f.match_code)
+    }
+
     return allEntries.map((entry) => {
       const key = `${entry.matchId}_${entry.outcomeKey}`
       const stat = statsMap[key] ?? { totalSimilar: 0, hitCount: 0, hitRate: 0 }
       const impliedProb = 1 / entry.oddValue
       const surpriseScore = stat.hitRate > 0 ? stat.hitRate / impliedProb : 0
 
-      return { ...entry, ...stat, impliedProb, surpriseScore }
+      // ML model probability
+      const matchCode = idToCode.get(entry.matchId)
+      const matchMlMap = matchCode ? mlProbMap.get(matchCode) : undefined
+      const mlModelProb = matchMlMap?.get(entry.outcomeKey) ?? null
+      const mlSurpriseScore = mlModelProb !== null && impliedProb > 0.01
+        ? mlModelProb / impliedProb
+        : null
+
+      return { ...entry, ...stat, impliedProb, surpriseScore, mlModelProb, mlSurpriseScore }
     })
-  }, [allEntries, statsMap])
+  }, [allEntries, statsMap, mlProbMap, filteredFixtures])
 
   // Group by match and sort
   const matchGroups = useMemo((): MatchSurpriseGroup[] => {
@@ -262,6 +329,12 @@ export default function SurpriseAnalysisDashboard({ fixtures }: Props) {
         const bMax = Math.max(...b.entries.map((e) => e.hitRate))
         return bMax - aMax
       })
+    } else if (sortBy === 'mlScore') {
+      groups.sort((a, b) => {
+        const aMax = Math.max(...a.entries.map((e) => e.mlSurpriseScore ?? 0))
+        const bMax = Math.max(...b.entries.map((e) => e.mlSurpriseScore ?? 0))
+        return bMax - aMax
+      })
     } else {
       groups.sort((a, b) => {
         const aMax = Math.max(...a.entries.map((e) => e.oddValue))
@@ -296,6 +369,7 @@ export default function SurpriseAnalysisDashboard({ fixtures }: Props) {
 
   const sortOptions: { value: SortKey; label: string }[] = [
     { value: 'surpriseScore', label: 'Sürpriz Skor' },
+    { value: 'mlScore', label: 'ML Skor' },
     { value: 'hitRate', label: 'Tutma Oranı' },
     { value: 'odds', label: 'Oran Değeri' },
   ]
@@ -515,7 +589,15 @@ function MatchCard({ group, isExpanded, isLoading, onToggle }: MatchCardProps) {
         </div>
 
         <p className="text-sm font-medium text-[var(--text-primary)] mb-3">
-          {fixture.home_team} <span className="text-[var(--text-muted)]">vs</span> {fixture.away_team}
+          <a
+            href={`/analysis/${fixture.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="hover:text-[var(--accent-blue)] hover:underline transition-colors"
+          >
+            {fixture.home_team} <span className="text-[var(--text-muted)]">vs</span> {fixture.away_team}
+          </a>
         </p>
 
         {/* Top entries pills */}
@@ -548,7 +630,9 @@ function MatchCard({ group, isExpanded, isLoading, onToggle }: MatchCardProps) {
                   <th className="text-right py-2 px-2 font-medium">Tutan</th>
                   <th className="text-right py-2 px-2 font-medium">Tutma %</th>
                   <th className="text-right py-2 px-2 font-medium">Beklenen %</th>
+                  <th className="text-right py-2 px-2 font-medium">ML %</th>
                   <th className="text-right py-2 px-2 font-medium">Skor</th>
+                  <th className="text-right py-2 px-2 font-medium">ML Skor</th>
                 </tr>
               </thead>
               <tbody>
@@ -592,12 +676,24 @@ function MatchCard({ group, isExpanded, isLoading, onToggle }: MatchCardProps) {
                       <td className="py-2 px-2 font-mono tabular-nums text-right text-[var(--text-muted)]">
                         %{implied.toFixed(1)}
                       </td>
+                      <td className={`py-2 px-2 font-mono tabular-nums text-right ${entry.mlModelProb !== null && entry.mlModelProb > entry.impliedProb ? 'text-[var(--accent-win)] font-bold' : 'text-[var(--text-muted)]'}`}>
+                        {entry.mlModelProb !== null ? `%${(entry.mlModelProb * 100).toFixed(1)}` : '—'}
+                      </td>
                       <td className="py-2 px-2 text-right">
                         {isLoading ? (
                           <span className="inline-block h-5 w-10 rounded bg-[var(--bg-tertiary)] animate-pulse" />
                         ) : entry.surpriseScore > 0 ? (
                           <span className={`inline-block font-mono text-xs font-bold px-1.5 py-0.5 rounded ${scoreBadgeClass(entry.surpriseScore)}`}>
                             {entry.surpriseScore.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[var(--text-muted)]">—</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        {entry.mlSurpriseScore !== null ? (
+                          <span className={`inline-block font-mono text-xs font-bold px-1.5 py-0.5 rounded ${scoreBadgeClass(entry.mlSurpriseScore)}`}>
+                            {entry.mlSurpriseScore.toFixed(2)}
                           </span>
                         ) : (
                           <span className="text-xs text-[var(--text-muted)]">—</span>
@@ -631,25 +727,42 @@ function MatchCard({ group, isExpanded, isLoading, onToggle }: MatchCardProps) {
 
                   {isLoading ? (
                     <div className="h-4 w-full rounded bg-[var(--bg-secondary)] animate-pulse" />
-                  ) : entry.totalSimilar > 0 ? (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-[var(--text-tertiary)]">
-                        {entry.totalSimilar.toLocaleString('tr-TR')} benzer profilde {entry.hitCount} kez tuttu
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className={`font-mono font-bold ${hitRateClass(entry.hitRate, entry.impliedProb)}`}>
-                          %{(entry.hitRate * 100).toFixed(1)}
-                        </span>
-                        <span className="text-[var(--text-muted)]">/ %{implied.toFixed(1)}</span>
-                        {entry.surpriseScore > 0 && (
-                          <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded ${scoreBadgeClass(entry.surpriseScore)}`}>
-                            {entry.surpriseScore.toFixed(2)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
                   ) : (
-                    <span className="text-xs text-[var(--text-muted)]">Tarihsel veri bulunamadı</span>
+                    <div className="flex flex-col gap-1">
+                      {entry.totalSimilar > 0 ? (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-[var(--text-tertiary)]">
+                            {entry.totalSimilar.toLocaleString('tr-TR')} benzer profilde {entry.hitCount} kez tuttu
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`font-mono font-bold ${hitRateClass(entry.hitRate, entry.impliedProb)}`}>
+                              %{(entry.hitRate * 100).toFixed(1)}
+                            </span>
+                            <span className="text-[var(--text-muted)]">/ %{implied.toFixed(1)}</span>
+                            {entry.surpriseScore > 0 && (
+                              <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded ${scoreBadgeClass(entry.surpriseScore)}`}>
+                                {entry.surpriseScore.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-[var(--text-muted)]">Tarihsel veri bulunamadı</span>
+                      )}
+                      {entry.mlSurpriseScore !== null && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-[var(--text-tertiary)]">ML Model</span>
+                          <div className="flex items-center gap-2">
+                            <span className={`font-mono font-bold ${entry.mlModelProb !== null && entry.mlModelProb > entry.impliedProb ? 'text-[var(--accent-win)]' : 'text-[var(--text-muted)]'}`}>
+                              %{entry.mlModelProb !== null ? (entry.mlModelProb * 100).toFixed(1) : '—'}
+                            </span>
+                            <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded ${scoreBadgeClass(entry.mlSurpriseScore)}`}>
+                              {entry.mlSurpriseScore.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )
@@ -684,6 +797,11 @@ function SurprisePill({ entry, isLoading }: { entry: SurpriseWithStats; isLoadin
           <span className="font-mono font-bold">{entry.surpriseScore.toFixed(1)}</span>
         </>
       ) : null}
+      {entry.mlSurpriseScore !== null && (
+        <span className={`font-mono text-[9px] font-bold px-1 py-0.5 rounded ${scoreBadgeClass(entry.mlSurpriseScore)}`}>
+          ML {entry.mlSurpriseScore.toFixed(1)}
+        </span>
+      )}
     </span>
   )
 }
