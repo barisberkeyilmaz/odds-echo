@@ -250,7 +250,7 @@ export async function GET() {
       actual,
       isCorrect,
       confidence,
-      scoreFt: match.score_ft,
+      scoreFt: match.score_ft!,
       hasConfidentPick,
       confidenceLevel,
     })
