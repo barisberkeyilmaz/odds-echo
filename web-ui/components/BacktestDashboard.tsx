@@ -437,7 +437,7 @@ export default function BacktestDashboard() {
         <div className="text-center py-16 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)]">
           <p className="text-sm text-[var(--text-tertiary)]">Seçilen tarih aralığında backtest verisi bulunamadı.</p>
           <p className="text-xs text-[var(--text-muted)] mt-2">
-            Önce <code className="font-mono">python backtest_daily_picks.py --days 30</code> çalıştırın.
+            Seçilen tarih aralığında veri bulunamadı.
           </p>
         </div>
       )}

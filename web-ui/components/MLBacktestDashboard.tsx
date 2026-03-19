@@ -18,9 +18,11 @@ type MarketStat = {
   total: number
   accuracy: number
   calibration: CalibrationBracket[]
-  valueBetCount: number
-  valueBetHits: number
-  valueBetROI: number
+  confidentPickCount: number
+  confidentPickHits: number
+  confidentPickHitRate: number
+  confidentPickByLevel: Record<string, { total: number; hits: number }>
+  coverage: number
 }
 
 type RecentPick = {
@@ -34,7 +36,8 @@ type RecentPick = {
   isCorrect: boolean
   confidence: number
   scoreFt: string
-  hasValueBet: boolean
+  hasConfidentPick: boolean
+  confidenceLevel: string | null
 }
 
 type BacktestResponse = {
@@ -44,22 +47,28 @@ type BacktestResponse = {
   summary: {
     totalPredictions: number
     overallAccuracy: number
-    valueBets: { total: number; hits: number; roi: number }
+    confidentPicks: { total: number; hits: number; hitRate: number }
   } | null
   markets: MarketStat[]
   recentPicks: RecentPick[]
 }
 
 // ---------------------------------------------------------------------------
-// Yardımcılar
+// Yardimcilar
 // ---------------------------------------------------------------------------
 
 const MARKET_LABELS: Record<string, string> = {
-  ms: 'Maç Sonucu',
-  kg: 'Karşılıklı Gol',
-  au25: '2.5 Alt/Üst',
+  ms: 'Mac Sonucu',
+  kg: 'Karsilikli Gol',
+  au25: '2.5 Alt/Ust',
   tg: 'Toplam Gol',
-  iy: 'İlk Yarı',
+  iyms: 'IY/MS',
+}
+
+const CONFIDENCE_LEVEL_LABELS: Record<string, { text: string; color: string }> = {
+  cok_emin: { text: 'COK EMIN', color: 'var(--accent-win)' },
+  emin: { text: 'EMIN', color: 'var(--accent-blue)' },
+  olasi: { text: 'OLASI', color: 'var(--accent-draw)' },
 }
 
 function formatPct(value: number) {
@@ -68,10 +77,6 @@ function formatPct(value: number) {
 
 function pctColor(value: number, threshold: number) {
   return value >= threshold ? 'text-[var(--accent-win)]' : 'text-[var(--accent-loss)]'
-}
-
-function roiColor(value: number) {
-  return value >= 0 ? 'text-[var(--accent-win)]' : 'text-[var(--accent-loss)]'
 }
 
 function formatDate(dateStr: string) {
@@ -83,7 +88,7 @@ function formatDate(dateStr: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Alt Bileşenler
+// Alt Bilesenler
 // ---------------------------------------------------------------------------
 
 function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
@@ -106,10 +111,10 @@ function MarketTable({ data }: { data: MarketStat[] }) {
           <tr className="bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] text-xs uppercase tracking-wider">
             <th className="text-left px-4 py-2.5 font-medium">Market</th>
             <th className="text-right px-3 py-2.5 font-medium">Tahmin</th>
-            <th className="text-right px-3 py-2.5 font-medium">İsabet %</th>
-            <th className="text-right px-3 py-2.5 font-medium">VB Sayı</th>
-            <th className="text-right px-3 py-2.5 font-medium">VB İsabet</th>
-            <th className="text-right px-4 py-2.5 font-medium">VB ROI</th>
+            <th className="text-right px-3 py-2.5 font-medium">Isabet %</th>
+            <th className="text-right px-3 py-2.5 font-medium">Emin Tahmin</th>
+            <th className="text-right px-3 py-2.5 font-medium">Emin Isabet</th>
+            <th className="text-right px-4 py-2.5 font-medium">Coverage</th>
           </tr>
         </thead>
         <tbody>
@@ -125,13 +130,15 @@ function MarketTable({ data }: { data: MarketStat[] }) {
                 {formatPct(row.accuracy)}
               </td>
               <td className="px-3 py-2.5 text-right font-mono tabular-nums text-xs text-[var(--text-muted)]">
-                {row.valueBetCount}
+                {row.confidentPickCount}
               </td>
-              <td className="px-3 py-2.5 text-right font-mono tabular-nums text-xs text-[var(--text-muted)]">
-                {row.valueBetHits}
+              <td className={`px-3 py-2.5 text-right font-mono tabular-nums text-xs font-medium ${
+                row.confidentPickCount > 0 ? pctColor(row.confidentPickHitRate, 0.5) : 'text-[var(--text-muted)]'
+              }`}>
+                {row.confidentPickCount > 0 ? formatPct(row.confidentPickHitRate) : '\u2014'}
               </td>
-              <td className={`px-4 py-2.5 text-right font-mono tabular-nums text-xs font-medium ${roiColor(row.valueBetROI)}`}>
-                {row.valueBetCount > 0 ? `${row.valueBetROI >= 0 ? '+' : ''}${(row.valueBetROI * 100).toFixed(1)}%` : '—'}
+              <td className="px-4 py-2.5 text-right font-mono tabular-nums text-xs text-[var(--text-muted)]">
+                {formatPct(row.coverage)}
               </td>
             </tr>
           ))}
@@ -142,7 +149,6 @@ function MarketTable({ data }: { data: MarketStat[] }) {
 }
 
 function CalibrationTable({ markets }: { markets: MarketStat[] }) {
-  // Tüm marketlerin kalibrasyonunu birleştir
   const brackets = ['0-20%', '20-40%', '40-60%', '60-80%', '80-100%']
   const combined = brackets.map((bracket) => {
     let totalCount = 0
@@ -169,10 +175,10 @@ function CalibrationTable({ markets }: { markets: MarketStat[] }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] text-xs uppercase tracking-wider">
-            <th className="text-left px-4 py-2.5 font-medium">Güven Aralığı</th>
-            <th className="text-right px-3 py-2.5 font-medium">Sayı</th>
+            <th className="text-left px-4 py-2.5 font-medium">Guven Araligi</th>
+            <th className="text-right px-3 py-2.5 font-medium">Sayi</th>
             <th className="text-right px-3 py-2.5 font-medium">Ort. Tahmin</th>
-            <th className="text-right px-4 py-2.5 font-medium">Gerçek Oran</th>
+            <th className="text-right px-4 py-2.5 font-medium">Gercek Oran</th>
             <th className="text-right px-4 py-2.5 font-medium">Fark</th>
           </tr>
         </thead>
@@ -188,17 +194,17 @@ function CalibrationTable({ markets }: { markets: MarketStat[] }) {
                   {row.count}
                 </td>
                 <td className="px-3 py-2.5 text-right font-mono tabular-nums text-xs text-[var(--text-secondary)]">
-                  {row.count > 0 ? formatPct(row.avgPredicted) : '—'}
+                  {row.count > 0 ? formatPct(row.avgPredicted) : '\u2014'}
                 </td>
                 <td className={`px-4 py-2.5 text-right font-mono tabular-nums text-xs font-medium ${
                   row.count > 0 ? pctColor(row.avgActual, row.avgPredicted) : 'text-[var(--text-muted)]'
                 }`}>
-                  {row.count > 0 ? formatPct(row.avgActual) : '—'}
+                  {row.count > 0 ? formatPct(row.avgActual) : '\u2014'}
                 </td>
                 <td className={`px-4 py-2.5 text-right font-mono tabular-nums text-xs font-medium ${
-                  row.count > 0 ? roiColor(diff) : 'text-[var(--text-muted)]'
+                  row.count > 0 ? (diff >= 0 ? 'text-[var(--accent-win)]' : 'text-[var(--accent-loss)]') : 'text-[var(--text-muted)]'
                 }`}>
-                  {row.count > 0 ? `${diff >= 0 ? '+' : ''}${(diff * 100).toFixed(1)}pp` : '—'}
+                  {row.count > 0 ? `${diff >= 0 ? '+' : ''}${(diff * 100).toFixed(1)}pp` : '\u2014'}
                 </td>
               </tr>
             )
@@ -223,110 +229,118 @@ function RecentPicksTable({ picks }: { picks: RecentPick[] }) {
           <thead>
             <tr className="bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] text-xs uppercase tracking-wider">
               <th className="text-left px-4 py-2.5 font-medium">Tarih</th>
-              <th className="text-left px-3 py-2.5 font-medium">Maç</th>
+              <th className="text-left px-3 py-2.5 font-medium">Mac</th>
               <th className="text-left px-3 py-2.5 font-medium">Market</th>
               <th className="text-center px-3 py-2.5 font-medium">Tahmin</th>
-              <th className="text-center px-3 py-2.5 font-medium">Gerçek</th>
-              <th className="text-right px-3 py-2.5 font-medium">Güven</th>
+              <th className="text-center px-3 py-2.5 font-medium">Gercek</th>
+              <th className="text-right px-3 py-2.5 font-medium">Guven</th>
               <th className="text-center px-3 py-2.5 font-medium">Skor</th>
-              <th className="text-center px-3 py-2.5 font-medium">VB</th>
-              <th className="text-center px-4 py-2.5 font-medium">Sonuç</th>
+              <th className="text-center px-3 py-2.5 font-medium">Seviye</th>
+              <th className="text-center px-4 py-2.5 font-medium">Sonuc</th>
             </tr>
           </thead>
           <tbody>
-            {paged.map((pick, i) => (
-              <tr
-                key={`${pick.matchCode}-${pick.market}-${i}`}
-                className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-tertiary)] transition-colors"
-              >
-                <td className="px-4 py-2.5 font-mono text-xs text-[var(--text-muted)]">
-                  {formatDate(pick.matchDate)}
-                </td>
-                <td className="px-3 py-2.5 text-sm text-[var(--text-primary)]">
-                  {pick.homeTeam} - {pick.awayTeam}
-                </td>
-                <td className="px-3 py-2.5">
-                  <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-[color-mix(in_srgb,var(--accent-blue)_10%,transparent)] text-[var(--accent-blue)]">
-                    {pick.market.toUpperCase()}
-                  </span>
-                </td>
-                <td className="px-3 py-2.5 text-center font-mono tabular-nums text-xs font-medium text-[var(--text-secondary)]">
-                  {pick.predicted}
-                </td>
-                <td className="px-3 py-2.5 text-center font-mono tabular-nums text-xs font-medium text-[var(--text-secondary)]">
-                  {pick.actual}
-                </td>
-                <td className="px-3 py-2.5 text-right font-mono tabular-nums text-xs text-[var(--text-muted)]">
-                  {formatPct(pick.confidence)}
-                </td>
-                <td className="px-3 py-2.5 text-center font-mono text-xs text-[var(--text-secondary)]">
-                  {pick.scoreFt}
-                </td>
-                <td className="px-3 py-2.5 text-center">
-                  {pick.hasValueBet ? (
-                    <span className="text-[var(--accent-draw)] text-xs font-bold">VB</span>
-                  ) : (
-                    <span className="text-[var(--text-muted)] text-xs">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-2.5 text-center">
-                  {pick.isCorrect ? (
-                    <span className="text-[var(--accent-win)] font-bold text-sm">&#10003;</span>
-                  ) : (
-                    <span className="text-[var(--accent-loss)] font-bold text-sm">&#10007;</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {paged.map((pick, i) => {
+              const levelInfo = pick.confidenceLevel ? CONFIDENCE_LEVEL_LABELS[pick.confidenceLevel] : null
+              return (
+                <tr
+                  key={`${pick.matchCode}-${pick.market}-${i}`}
+                  className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                >
+                  <td className="px-4 py-2.5 font-mono text-xs text-[var(--text-muted)]">
+                    {formatDate(pick.matchDate)}
+                  </td>
+                  <td className="px-3 py-2.5 text-sm text-[var(--text-primary)]">
+                    {pick.homeTeam} - {pick.awayTeam}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-[color-mix(in_srgb,var(--accent-blue)_10%,transparent)] text-[var(--accent-blue)]">
+                      {pick.market.toUpperCase()}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-center font-mono tabular-nums text-xs font-medium text-[var(--text-secondary)]">
+                    {pick.predicted}
+                  </td>
+                  <td className="px-3 py-2.5 text-center font-mono tabular-nums text-xs font-medium text-[var(--text-secondary)]">
+                    {pick.actual}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-xs text-[var(--text-muted)]">
+                    {formatPct(pick.confidence)}
+                  </td>
+                  <td className="px-3 py-2.5 text-center font-mono text-xs text-[var(--text-secondary)]">
+                    {pick.scoreFt}
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    {levelInfo ? (
+                      <span className="text-[10px] font-bold" style={{ color: levelInfo.color }}>
+                        {levelInfo.text}
+                      </span>
+                    ) : (
+                      <span className="text-[var(--text-muted)] text-xs">&mdash;</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-center">
+                    {pick.isCorrect ? (
+                      <span className="text-[var(--accent-win)] font-bold text-sm">&#10003;</span>
+                    ) : (
+                      <span className="text-[var(--accent-loss)] font-bold text-sm">&#10007;</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
 
       {/* Mobile */}
       <div className="block sm:hidden divide-y divide-[var(--border-subtle)] rounded-lg border border-[var(--border-primary)] overflow-hidden bg-[var(--bg-secondary)]">
-        {paged.map((pick, i) => (
-          <div key={`${pick.matchCode}-${pick.market}-${i}`} className="px-4 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-[var(--text-primary)] truncate">
-                  {pick.homeTeam} - {pick.awayTeam}
+        {paged.map((pick, i) => {
+          const levelInfo = pick.confidenceLevel ? CONFIDENCE_LEVEL_LABELS[pick.confidenceLevel] : null
+          return (
+            <div key={`${pick.matchCode}-${pick.market}-${i}`} className="px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-[var(--text-primary)] truncate">
+                    {pick.homeTeam} - {pick.awayTeam}
+                  </div>
+                  <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                    {formatDate(pick.matchDate)} &bull; {pick.scoreFt}
+                  </div>
                 </div>
-                <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                  {formatDate(pick.matchDate)} &bull; {pick.scoreFt}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-[color-mix(in_srgb,var(--accent-blue)_10%,transparent)] text-[var(--accent-blue)]">
+                    {pick.market.toUpperCase()}
+                  </span>
+                  {pick.isCorrect ? (
+                    <span className="text-[var(--accent-win)] font-bold text-sm">&#10003;</span>
+                  ) : (
+                    <span className="text-[var(--accent-loss)] font-bold text-sm">&#10007;</span>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-[color-mix(in_srgb,var(--accent-blue)_10%,transparent)] text-[var(--accent-blue)]">
-                  {pick.market.toUpperCase()}
+              <div className="flex items-center gap-4 mt-2 text-[10px]">
+                <span className="text-[var(--text-muted)]">
+                  Tahmin: <span className="font-mono text-[var(--text-secondary)]">{pick.predicted}</span>
                 </span>
-                {pick.isCorrect ? (
-                  <span className="text-[var(--accent-win)] font-bold text-sm">&#10003;</span>
-                ) : (
-                  <span className="text-[var(--accent-loss)] font-bold text-sm">&#10007;</span>
-                )}
+                <span className="text-[var(--text-muted)]">
+                  Gercek: <span className="font-mono text-[var(--text-secondary)]">{pick.actual}</span>
+                </span>
+                <span className="text-[var(--text-muted)]">
+                  Guven: <span className="font-mono text-[var(--text-secondary)]">{formatPct(pick.confidence)}</span>
+                </span>
+                {levelInfo && <span className="font-bold" style={{ color: levelInfo.color }}>{levelInfo.text}</span>}
               </div>
             </div>
-            <div className="flex items-center gap-4 mt-2 text-[10px]">
-              <span className="text-[var(--text-muted)]">
-                Tahmin: <span className="font-mono text-[var(--text-secondary)]">{pick.predicted}</span>
-              </span>
-              <span className="text-[var(--text-muted)]">
-                Gerçek: <span className="font-mono text-[var(--text-secondary)]">{pick.actual}</span>
-              </span>
-              <span className="text-[var(--text-muted)]">
-                Güven: <span className="font-mono text-[var(--text-secondary)]">{formatPct(pick.confidence)}</span>
-              </span>
-              {pick.hasValueBet && <span className="text-[var(--accent-draw)] font-bold">VB</span>}
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-3 px-1">
           <p className="text-xs text-[var(--text-muted)]">
-            {picks.length} sonuçtan {page * pageSize + 1}–{Math.min((page + 1) * pageSize, picks.length)} arası
+            {picks.length} sonuctan {page * pageSize + 1}&ndash;{Math.min((page + 1) * pageSize, picks.length)} arasi
           </p>
           <div className="flex gap-2">
             <button
@@ -334,7 +348,7 @@ function RecentPicksTable({ picks }: { picks: RecentPick[] }) {
               disabled={page === 0}
               className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
-              &larr; Önceki
+              &larr; Onceki
             </button>
             <button
               onClick={() => setPage(page + 1)}
@@ -384,16 +398,16 @@ export default function MLBacktestDashboard() {
       {loading && (
         <div className="text-center py-16">
           <div className="inline-block w-6 h-6 border-2 border-[var(--accent-blue)] border-t-transparent rounded-full animate-spin mb-3" />
-          <p className="text-sm text-[var(--text-muted)]">ML backtest verileri yükleniyor...</p>
+          <p className="text-sm text-[var(--text-muted)]">ML backtest verileri yukleniyor...</p>
         </div>
       )}
 
       {/* Empty */}
       {isEmpty && (
         <div className="text-center py-16 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)]">
-          <p className="text-sm text-[var(--text-tertiary)]">ML backtest verisi bulunamadı.</p>
+          <p className="text-sm text-[var(--text-tertiary)]">ML backtest verisi bulunamadi.</p>
           <p className="text-xs text-[var(--text-muted)] mt-2">
-            Önce <code className="font-mono">python predict.py</code> çalıştırarak tahmin üretin.
+            Once <code className="font-mono">python predict.py</code> calistirarak tahmin uretin.
           </p>
         </div>
       )}
@@ -405,9 +419,9 @@ export default function MLBacktestDashboard() {
             <span className="font-mono font-semibold text-[var(--accent-draw)]">{data.settledMatches}</span>
             <span className="text-[var(--text-muted)]"> / </span>
             <span className="font-mono">{data.totalMatchesWithPrediction}</span>
-            {' '}maç oynanmış.{' '}
+            {' '}mac oyanmis.{' '}
             <span className="text-[var(--text-muted)]">
-              Kalan {data.totalMatchesWithPrediction - data.settledMatches} maç oynanınca backtest otomatik güncellenecek.
+              Kalan {data.totalMatchesWithPrediction - data.settledMatches} mac oyaninca backtest otomatik guncellenecek.
             </span>
           </p>
         </div>
@@ -425,40 +439,42 @@ export default function MLBacktestDashboard() {
             </div>
           )}
 
-          {/* Özet kartlar */}
+          {/* Ozet kartlar */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatCard
               label="Toplam Tahmin"
               value={summary.totalPredictions.toLocaleString('tr-TR')}
-              sub="Oynanmış maçlar"
+              sub="Oyanmis maclar"
             />
             <StatCard
-              label="Genel İsabet"
+              label="Genel Isabet"
               value={formatPct(summary.overallAccuracy)}
               color={pctColor(summary.overallAccuracy, 0.4)}
             />
             <StatCard
-              label="Value Bet ROI"
-              value={summary.valueBets.total > 0
-                ? `${summary.valueBets.roi >= 0 ? '+' : ''}${(summary.valueBets.roi * 100).toFixed(1)}%`
-                : '—'}
-              sub={`${summary.valueBets.total} value bet`}
-              color={roiColor(summary.valueBets.roi)}
+              label="Emin Tahmin Isabet"
+              value={summary.confidentPicks.total > 0
+                ? formatPct(summary.confidentPicks.hitRate)
+                : '\u2014'}
+              sub={`${summary.confidentPicks.hits} / ${summary.confidentPicks.total} emin tahmin`}
+              color={summary.confidentPicks.total > 0
+                ? pctColor(summary.confidentPicks.hitRate, 0.5)
+                : undefined}
             />
             <StatCard
-              label="Value Bet İsabet"
-              value={summary.valueBets.total > 0
-                ? formatPct(summary.valueBets.hits / summary.valueBets.total)
-                : '—'}
-              sub={`${summary.valueBets.hits} / ${summary.valueBets.total}`}
+              label="Emin Tahmin Sayisi"
+              value={summary.confidentPicks.total > 0
+                ? summary.confidentPicks.total.toString()
+                : '\u2014'}
+              sub={`${summary.confidentPicks.hits} tuttu`}
             />
           </div>
 
-          {/* Market Performansı */}
+          {/* Market Performansi */}
           {markets.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold text-[var(--text-secondary)] font-[family-name:var(--font-space-grotesk)] mb-2">
-                Market Performansı
+                Market Performansi
               </h3>
               <MarketTable data={markets} />
             </div>
@@ -471,7 +487,7 @@ export default function MLBacktestDashboard() {
                 Kalibrasyon
               </h3>
               <p className="text-[10px] text-[var(--text-muted)] mb-3">
-                Model %X güvenle tahmin ettiğinde, gerçekte ne kadar isabetli? İdeal: tahmin ≈ gerçek.
+                Model %X guvenle tahmin ettiginde, gercekte ne kadar isabetli? Ideal: tahmin = gercek.
               </p>
               <CalibrationTable markets={markets} />
             </div>

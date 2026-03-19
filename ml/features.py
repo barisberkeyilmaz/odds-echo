@@ -119,19 +119,27 @@ def add_labels(df: pd.DataFrame) -> pd.DataFrame:
     df["target_au25"] = np.where(df["_total_goals"] > 2.5, 1, 0).astype(float)
     df.loc[df["_total_goals"].isna(), "target_au25"] = np.nan
 
-    # TG (Toplam Gol): 0="0-1", 1="2-3", 2="4+"
+    # TG (Toplam Gol): 0="0-1", 1="2-3", 2="4-5", 3="6+"
     df["target_tg"] = np.where(
         df["_total_goals"] <= 1, 0,
-        np.where(df["_total_goals"] <= 3, 1, 2)
+        np.where(df["_total_goals"] <= 3, 1,
+                 np.where(df["_total_goals"] <= 5, 2, 3))
     ).astype(float)
     df.loc[df["_total_goals"].isna(), "target_tg"] = np.nan
 
-    # İY (İlk Yarı): 0=ev, 1=beraberlik, 2=deplasman
-    df["target_iy"] = np.where(
-        df["_ht_home"] > df["_ht_away"], 0,
-        np.where(df["_ht_home"] == df["_ht_away"], 1, 2)
-    ).astype(float)
-    df.loc[df["_ht_home"].isna(), "target_iy"] = np.nan
+    # İY/MS (İlk Yarı / Maç Sonucu): 9 sınıf birleşik
+    # Sınıflar: 0=1/1, 1=1/X, 2=1/2, 3=X/1, 4=X/X, 5=X/2, 6=2/1, 7=2/X, 8=2/2
+    ht_result = np.where(
+        df["_ht_home"] > df["_ht_away"], 0,       # IY = 1
+        np.where(df["_ht_home"] == df["_ht_away"], 1, 2)  # IY = X or 2
+    )
+    ft_result = np.where(
+        df["_home_goals"] > df["_away_goals"], 0,  # MS = 1
+        np.where(df["_home_goals"] == df["_away_goals"], 1, 2)  # MS = X or 2
+    )
+    df["target_iyms"] = (ht_result * 3 + ft_result).astype(float)
+    # Her iki skor da gerekli
+    df.loc[df["_ht_home"].isna() | df["_home_goals"].isna(), "target_iyms"] = np.nan
 
     return df
 
@@ -166,6 +174,29 @@ def _add_odds_features(df: pd.DataFrame) -> pd.DataFrame:
         )
     df["odds_entropy"] = -(df["_log_ms_1"] + df["_log_ms_x"] + df["_log_ms_2"])
     df.drop(columns=["_log_ms_1", "_log_ms_x", "_log_ms_2"], inplace=True)
+
+    # IYMS normalized implied probabilities (vigorish kaldır)
+    iyms_suffixes = ["iyms_11", "iyms_1x", "iyms_12",
+                     "iyms_x1", "iyms_xx", "iyms_x2",
+                     "iyms_21", "iyms_2x", "iyms_22"]
+    iyms_sum = sum(df[f"imp_{s}"] for s in iyms_suffixes)
+    for s in iyms_suffixes:
+        df[f"imp_{s}_norm"] = df[f"imp_{s}"] / iyms_sum
+
+    # Shannon entropy (IYMS olasılıkları)
+    iyms_entropy = 0.0
+    for s in iyms_suffixes:
+        col = f"imp_{s}_norm"
+        iyms_entropy = iyms_entropy - df[col].apply(
+            lambda p: p * np.log2(p) if p and p > 0 else 0
+        )
+    df["odds_iyms_entropy"] = iyms_entropy
+
+    # TG normalized implied probabilities (4 sınıf)
+    tg_cols = ["tg_0_1", "tg_2_3", "tg_4_5", "tg_6_plus"]
+    tg_sum = sum(df[f"imp_{c}"] for c in tg_cols)
+    for c in tg_cols:
+        df[f"imp_{c}_norm"] = df[f"imp_{c}"] / tg_sum
 
     return df
 
@@ -334,19 +365,103 @@ def _add_rolling_features(df: pd.DataFrame) -> pd.DataFrame:
             feat = f"avg{window}_{col}"
             df[f"diff{window}_{col}"] = df[f"home_{feat}"] - df[f"away_{feat}"]
 
+    # ── Ev/Deplasman AYRI rolling stats ──────────────────────────
+    # Mevcut rolling tüm maçları (ev+deplasman) birlikte hesaplıyor.
+    # Burada sadece evdeki veya sadece deplasmandaki performansı hesaplıyoruz.
+    venue_roll_cols = ["goals_scored", "goals_conceded", "win", "btts"]
+
+    for window in ROLLING_WINDOWS:
+        for col in venue_roll_cols:
+            feat_name = f"venue_avg{window}_{col}"
+            # Home perspective: sadece evdeki maçlar
+            home_feats_venue = team_df[team_df["perspective"] == "home"].copy()
+            home_feats_venue[feat_name] = (
+                home_feats_venue.groupby("team")[col]
+                .transform(lambda s: s.rolling(window, min_periods=1).mean().shift(1))
+            )
+            # Away perspective: sadece deplasmandaki maçlar
+            away_feats_venue = team_df[team_df["perspective"] == "away"].copy()
+            away_feats_venue[feat_name] = (
+                away_feats_venue.groupby("team")[col]
+                .transform(lambda s: s.rolling(window, min_periods=1).mean().shift(1))
+            )
+            # Merge back
+            hv = home_feats_venue[["match_code", feat_name]].rename(columns={feat_name: f"home_{feat_name}"})
+            av = away_feats_venue[["match_code", feat_name]].rename(columns={feat_name: f"away_{feat_name}"})
+            df = df.merge(hv, on="match_code", how="left")
+            df = df.merge(av, on="match_code", how="left")
+
+    # ── Form Momentum (son 3 maç kazanma trendi) ─────────────────
+    # Son 3 maçtaki win rate'in son 10 maçtaki win rate'e oranı
+    # > 1 ise yükselen form, < 1 ise düşen form
+    for side in ["home", "away"]:
+        avg3 = team_df.groupby("team")["win"].transform(
+            lambda s: s.rolling(3, min_periods=1).mean().shift(1)
+        )
+        avg10 = team_df.groupby("team")["win"].transform(
+            lambda s: s.rolling(10, min_periods=1).mean().shift(1)
+        )
+        team_df["momentum"] = avg3 / avg10.replace(0, np.nan)
+
+    # Momentum merge
+    home_mom = team_df[team_df["perspective"] == "home"][["match_code", "momentum"]].rename(
+        columns={"momentum": "home_momentum"})
+    away_mom = team_df[team_df["perspective"] == "away"][["match_code", "momentum"]].rename(
+        columns={"momentum": "away_momentum"})
+    df = df.merge(home_mom, on="match_code", how="left")
+    df = df.merge(away_mom, on="match_code", how="left")
+    df["diff_momentum"] = df["home_momentum"] - df["away_momentum"]
+
     return df
 
 
 # ── Grup D: Bağlamsal ─────────────────────────────────────────────
 
 def _add_contextual_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Tarih ve lig bazlı features."""
+    """Tarih, lig ve cross-market features."""
     df["day_of_week"] = df["match_date"].dt.dayofweek  # 0=Pzt, 6=Paz
     df["month"] = df["match_date"].dt.month
 
     # League label encoding (frequency-based)
     league_counts = df["league"].value_counts()
     df["league_encoded"] = df["league"].map(league_counts).fillna(0)
+
+    # ── Lig Bazlı Gol Ortalaması (expanding mean, shift ile leakage-free) ──
+    # Her lig için o ana kadar görülmüş maçlardaki ortalama toplam gol
+    df = df.sort_values("match_date").reset_index(drop=True)
+    df["league_avg_goals"] = (
+        df.groupby("league")["_total_goals"]
+        .transform(lambda s: s.expanding().mean().shift(1))
+    )
+    # Lig bazlı ev sahibi kazanma oranı
+    df["_home_win"] = (df["_home_goals"] > df["_away_goals"]).astype(float)
+    df["league_home_win_rate"] = (
+        df.groupby("league")["_home_win"]
+        .transform(lambda s: s.expanding().mean().shift(1))
+    )
+    df.drop(columns=["_home_win"], inplace=True)
+
+    # ── Cross-Market Sinyalleri ──────────────────────────────────────
+    # KG oranı yüksek + AU25 üst yüksek → gol beklentisi tutarlı mı?
+    # imp_kg_var: her iki takım da gol atar olasılığı
+    # imp_au_25_ust: 2.5 üstü gol olasılığı
+    # Tutarlılık: ikisi de yüksekse → güçlü gol sinyali
+    if "imp_kg_var" in df.columns and "imp_au_25_ust" in df.columns:
+        df["cross_kg_au25"] = df["imp_kg_var"] * df["imp_au_25_ust"]
+        # Uyumsuzluk: KG yüksek ama AU25 düşük → çelişki
+        df["cross_kg_au25_diff"] = df["imp_kg_var"] - df["imp_au_25_ust"]
+
+    # MS favorisi ile IYMS tutarlılığı
+    # Eğer ms_1 favori ise, iyms_11 + iyms_1x + iyms_12 toplamı da yüksek olmalı
+    if "imp_ms_1_norm" in df.columns and "imp_iyms_11_norm" in df.columns:
+        df["cross_ms1_iyms"] = (
+            df["imp_iyms_11_norm"] + df["imp_iyms_1x_norm"] + df["imp_iyms_12_norm"]
+        )
+        df["cross_ms2_iyms"] = (
+            df["imp_iyms_21_norm"] + df["imp_iyms_2x_norm"] + df["imp_iyms_22_norm"]
+        )
+        # MS ve IYMS arasındaki fark → tutarsızlık sinyali
+        df["cross_ms_iyms_gap"] = df["imp_ms_1_norm"] - df["cross_ms1_iyms"]
 
     return df
 

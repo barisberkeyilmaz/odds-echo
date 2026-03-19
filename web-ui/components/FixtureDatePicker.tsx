@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 type FixtureDatePickerProps = {
@@ -167,9 +168,10 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
     setCalendarOpen(false)
   }
 
-  // Close calendar on outside click (desktop only)
+  // Close calendar on outside click (desktop only — mobile uses backdrop onClick)
   useEffect(() => {
     if (!calendarOpen) return
+    if (window.innerWidth < 640) return // mobile uses backdrop
     const handler = (e: MouseEvent) => {
       if (calendarRef.current && !calendarRef.current.contains(e.target as Node)) {
         setCalendarOpen(false)
@@ -177,6 +179,17 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [calendarOpen])
+
+  // Mobilde takvim açıkken body scroll'u kilitle
+  useEffect(() => {
+    if (!calendarOpen) return
+    const isMobile = window.innerWidth < 640
+    if (!isMobile) return
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = ''
+    }
   }, [calendarOpen])
 
   return (
@@ -291,12 +304,12 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
         </div>
       </div>
 
-      {/* Mobile calendar bottom sheet */}
-      {calendarOpen && (
-        <div className="sm:hidden fixed inset-0 z-50">
+      {/* Mobile calendar bottom sheet — portal to body to escape stacking context */}
+      {calendarOpen && typeof document !== 'undefined' && createPortal(
+        <div className="sm:hidden fixed inset-0 z-[9999] flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/50" onClick={() => setCalendarOpen(false)} />
-          <div className="absolute bottom-0 inset-x-0 bottom-sheet-enter" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-            <div className="bg-[var(--bg-primary)] rounded-t-2xl p-4">
+          <div className="relative z-10 bottom-sheet-enter max-h-[85vh] overflow-y-auto overscroll-contain">
+            <div className="bg-[var(--bg-primary)] rounded-t-2xl p-4 pb-8" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
               <div className="w-10 h-1 bg-[var(--bg-tertiary)] rounded-full mx-auto mb-4" />
               <InlineCalendar
                 selectedDateKey={selectedDateKey}
@@ -306,7 +319,8 @@ export default function FixtureDatePicker({ availableDateKeys, selectedDateKey }
               />
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

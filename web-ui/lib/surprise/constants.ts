@@ -52,6 +52,33 @@ export const OUTCOME_CATEGORY: Record<OddsKey, string> = {
   tg_0_1: 'TG', tg_2_3: 'TG', tg_4_5: 'TG', tg_6_plus: 'TG',
 }
 
+/**
+ * OddsKey → ML market/outcome mapping.
+ * au_15_alt/ust has no ML model so it's excluded.
+ */
+export const ODDS_KEY_TO_ML: Partial<Record<OddsKey, { market: string; outcome: string }>> = {
+  ms_1: { market: 'ms', outcome: '1' },
+  ms_x: { market: 'ms', outcome: 'X' },
+  ms_2: { market: 'ms', outcome: '2' },
+  iyms_11: { market: 'iyms', outcome: '1/1' },
+  iyms_1x: { market: 'iyms', outcome: '1/X' },
+  iyms_12: { market: 'iyms', outcome: '1/2' },
+  iyms_x1: { market: 'iyms', outcome: 'X/1' },
+  iyms_xx: { market: 'iyms', outcome: 'X/X' },
+  iyms_x2: { market: 'iyms', outcome: 'X/2' },
+  iyms_21: { market: 'iyms', outcome: '2/1' },
+  iyms_2x: { market: 'iyms', outcome: '2/X' },
+  iyms_22: { market: 'iyms', outcome: '2/2' },
+  au_25_alt: { market: 'au25', outcome: 'Alt' },
+  au_25_ust: { market: 'au25', outcome: 'Ust' },
+  kg_var: { market: 'kg', outcome: 'Var' },
+  kg_yok: { market: 'kg', outcome: 'Yok' },
+  tg_0_1: { market: 'tg', outcome: '0-1' },
+  tg_2_3: { market: 'tg', outcome: '2-3' },
+  tg_4_5: { market: 'tg', outcome: '4-5' },
+  tg_6_plus: { market: 'tg', outcome: '6+' },
+}
+
 export const DEFAULT_SURPRISE_THRESHOLD = 10.0
 export const MIN_SURPRISE_THRESHOLD = 0
 export const MAX_SURPRISE_THRESHOLD = 20.0

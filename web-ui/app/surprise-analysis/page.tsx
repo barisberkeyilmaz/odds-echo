@@ -145,7 +145,7 @@ export default async function SurpriseAnalysisPage({
             </p>
           </div>
         ) : (
-          <SurpriseAnalysisDashboard fixtures={fixtures} />
+          <SurpriseAnalysisDashboard fixtures={fixtures} dateKey={selectedDateKey} />
         )}
       </div>
     </main>

@@ -11,7 +11,13 @@ type RawPredictionRow = {
   probabilities: string | Record<string, number>
   predicted_outcome: string | null
   confidence: number | null
-  value_bets: string | Array<{ outcome: string; model_prob: number; implied_prob: number; edge: number }> | null
+  confident_picks: string | Array<{
+    outcome: string
+    confidence: number
+    threshold: number
+    confidence_level: string
+    implied_prob: number | null
+  }> | null
   model_version: string | null
 }
 
@@ -32,7 +38,7 @@ function safeParse<T>(val: string | T): T {
 }
 
 // ---------------------------------------------------------------------------
-// Skor Parse & Gerçek Sonuç Hesaplama (features.py:add_labels mantığı)
+// Skor Parse & Gercek Sonuc Hesaplama
 // ---------------------------------------------------------------------------
 
 function parseScore(score: string | null): [number, number] | null {
@@ -43,19 +49,19 @@ function parseScore(score: string | null): [number, number] | null {
 }
 
 function computeActual(market: string, scoreFt: string | null, scoreHt: string | null): string | null {
-  if (market === 'iy') {
-    const ht = parseScore(scoreHt)
-    if (!ht) return null
-    const [home, away] = ht
-    if (home > away) return '1'
-    if (home === away) return 'X'
-    return '2'
-  }
-
   const ft = parseScore(scoreFt)
   if (!ft) return null
   const [home, away] = ft
   const total = home + away
+
+  if (market === 'iyms') {
+    const ht = parseScore(scoreHt)
+    if (!ht) return null
+    const [htHome, htAway] = ht
+    const iyResult = htHome > htAway ? '1' : htHome === htAway ? 'X' : '2'
+    const msResult = home > away ? '1' : home === away ? 'X' : '2'
+    return `${iyResult}/${msResult}`
+  }
 
   switch (market) {
     case 'ms':
@@ -65,11 +71,12 @@ function computeActual(market: string, scoreFt: string | null, scoreHt: string |
     case 'kg':
       return (home > 0 && away > 0) ? 'Var' : 'Yok'
     case 'au25':
-      return total > 2.5 ? 'Üst' : 'Alt'
+      return total > 2.5 ? 'Ust' : 'Alt'
     case 'tg':
       if (total <= 1) return '0-1'
       if (total <= 3) return '2-3'
-      return '4+'
+      if (total <= 5) return '4-5'
+      return '6+'
     default:
       return null
   }
@@ -97,10 +104,11 @@ type AnalyzedPick = {
   isCorrect: boolean
   confidence: number
   scoreFt: string
-  hasValueBet: boolean
+  hasConfidentPick: boolean
+  confidenceLevel: string | null
 }
 
-function computeCalibration(picks: AnalyzedPick[], allConfidences: number[], allCorrect: boolean[]): CalibrationBracket[] {
+function computeCalibration(confidences: number[], corrects: boolean[]): CalibrationBracket[] {
   const brackets = [
     { label: '0-20%', min: 0, max: 0.2 },
     { label: '20-40%', min: 0.2, max: 0.4 },
@@ -113,10 +121,10 @@ function computeCalibration(picks: AnalyzedPick[], allConfidences: number[], all
     let sumPred = 0
     let sumActual = 0
     let count = 0
-    for (let i = 0; i < allConfidences.length; i++) {
-      if (allConfidences[i] >= b.min && allConfidences[i] < b.max) {
-        sumPred += allConfidences[i]
-        sumActual += allCorrect[i] ? 1 : 0
+    for (let i = 0; i < confidences.length; i++) {
+      if (confidences[i] >= b.min && confidences[i] < b.max) {
+        sumPred += confidences[i]
+        sumActual += corrects[i] ? 1 : 0
         count++
       }
     }
@@ -134,7 +142,7 @@ function computeCalibration(picks: AnalyzedPick[], allConfidences: number[], all
 // ---------------------------------------------------------------------------
 
 export async function GET() {
-  // 1. Tüm ml_predictions çek
+  // 1. Tum ml_predictions cek
   let allPreds: RawPredictionRow[] = []
   const batchSize = 1000
   let offset = 0
@@ -142,7 +150,7 @@ export async function GET() {
   while (true) {
     const { data, error } = await supabase
       .from('ml_predictions')
-      .select('match_code, market, probabilities, predicted_outcome, confidence, value_bets, model_version')
+      .select('match_code, market, probabilities, predicted_outcome, confidence, confident_picks, model_version')
       .order('model_version', { ascending: false })
       .range(offset, offset + batchSize - 1)
 
@@ -161,10 +169,9 @@ export async function GET() {
   const latestVersion = allPreds[0].model_version
   const preds = allPreds.filter((p) => p.model_version === latestVersion)
 
-  // 2. Bu maçların bilgilerini çek
+  // 2. Bu maclarin bilgilerini cek
   const matchCodes = [...new Set(preds.map((p) => p.match_code))]
 
-  // Supabase IN limiti ~1000, batch'le
   const matchMap = new Map<string, MatchRow>()
   for (let i = 0; i < matchCodes.length; i += 500) {
     const batch = matchCodes.slice(i, i + 500)
@@ -179,27 +186,26 @@ export async function GET() {
     }
   }
 
-  // Toplam maç sayıları
   const totalMatchesWithPrediction = matchCodes.length
   const settledMatchCodes = [...matchMap.values()].filter(
     (m) => m.score_ft && m.score_ft.match(/\d+\s*[-:]\s*\d+/)
   ).length
 
-  // 3. Analiz: sadece oynanmış maçlar
+  // 3. Analiz: sadece oyanmis maclar
   const analyzedPicks: AnalyzedPick[] = []
   const allConfidences: number[] = []
   const allCorrect: boolean[] = []
 
-  // Market bazlı istatistikler
+  // Market bazli istatistikler
   const marketStats = new Map<string, {
-    total: number; correct: number;
-    vbTotal: number; vbHits: number; vbProfit: number;
+    total: number; correct: number
+    cpTotal: number; cpHits: number
+    cpByLevel: Record<string, { total: number; hits: number }>
     confidences: number[]; corrects: boolean[]
   }>()
 
-  let totalValueBets = 0
-  let totalValueBetHits = 0
-  let totalValueBetProfit = 0
+  let totalConfidentPicks = 0
+  let totalConfidentHits = 0
 
   for (const pred of preds) {
     const match = matchMap.get(pred.match_code)
@@ -212,9 +218,13 @@ export async function GET() {
     const confidence = pred.confidence ?? 0
     const isCorrect = predicted === actual
 
-    // Value bet kontrolü
-    const rawVb = safeParse<Array<{ outcome: string; model_prob: number; implied_prob: number; edge: number }> | null>(pred.value_bets ?? 'null')
-    const hasValueBet = rawVb !== null && Array.isArray(rawVb) && rawVb.length > 0
+    // Confident pick kontrolu
+    const rawCp = safeParse<Array<{
+      outcome: string; confidence: number; threshold: number
+      confidence_level: string; implied_prob: number | null
+    }> | null>(pred.confident_picks ?? 'null')
+    const hasConfidentPick = rawCp !== null && Array.isArray(rawCp) && rawCp.length > 0
+    const confidenceLevel = hasConfidentPick ? rawCp![0].confidence_level : null
 
     analyzedPicks.push({
       matchCode: pred.match_code,
@@ -227,7 +237,8 @@ export async function GET() {
       isCorrect,
       confidence,
       scoreFt: match.score_ft,
-      hasValueBet,
+      hasConfidentPick,
+      confidenceLevel,
     })
 
     allConfidences.push(confidence)
@@ -235,7 +246,12 @@ export async function GET() {
 
     // Market istatistikleri
     if (!marketStats.has(pred.market)) {
-      marketStats.set(pred.market, { total: 0, correct: 0, vbTotal: 0, vbHits: 0, vbProfit: 0, confidences: [], corrects: [] })
+      marketStats.set(pred.market, {
+        total: 0, correct: 0,
+        cpTotal: 0, cpHits: 0,
+        cpByLevel: {},
+        confidences: [], corrects: [],
+      })
     }
     const ms = marketStats.get(pred.market)!
     ms.total++
@@ -243,31 +259,30 @@ export async function GET() {
     ms.confidences.push(confidence)
     ms.corrects.push(isCorrect)
 
-    // Value bet ROI: predicted outcome ile bahis yapıldığını varsay
-    if (hasValueBet) {
-      // En yüksek edge'li value bet
-      const bestVb = rawVb!.sort((a, b) => b.edge - a.edge)[0]
-      const vbActual = computeActual(pred.market, match.score_ft, match.score_ht)
-      const vbHit = bestVb.outcome === vbActual
-      // implied_prob'dan oran hesapla: odds = 1 / implied_prob
-      const odds = 1 / bestVb.implied_prob
-      const profit = vbHit ? (odds - 1) : -1
+    // Confident pick istatistikleri
+    if (hasConfidentPick) {
+      const cpOutcome = rawCp![0].outcome
+      const cpHit = cpOutcome === actual
 
-      ms.vbTotal++
-      ms.vbHits += vbHit ? 1 : 0
-      ms.vbProfit += profit
+      ms.cpTotal++
+      if (cpHit) ms.cpHits++
 
-      totalValueBets++
-      totalValueBetHits += vbHit ? 1 : 0
-      totalValueBetProfit += profit
+      totalConfidentPicks++
+      if (cpHit) totalConfidentHits++
+
+      // Seviye bazli
+      const level = rawCp![0].confidence_level
+      if (!ms.cpByLevel[level]) ms.cpByLevel[level] = { total: 0, hits: 0 }
+      ms.cpByLevel[level].total++
+      if (cpHit) ms.cpByLevel[level].hits++
     }
   }
 
-  // 4. Response oluştur
+  // 4. Response olustur
   const totalPredictions = analyzedPicks.length
   const overallCorrect = analyzedPicks.filter((p) => p.isCorrect).length
 
-  const marketOrder = ['ms', 'kg', 'au25', 'tg', 'iy']
+  const marketOrder = ['ms', 'kg', 'au25', 'tg', 'iyms']
   const markets = marketOrder
     .filter((m) => marketStats.has(m))
     .map((market) => {
@@ -276,14 +291,16 @@ export async function GET() {
         market,
         total: ms.total,
         accuracy: ms.total > 0 ? ms.correct / ms.total : 0,
-        calibration: computeCalibration([], ms.confidences, ms.corrects),
-        valueBetCount: ms.vbTotal,
-        valueBetHits: ms.vbHits,
-        valueBetROI: ms.vbTotal > 0 ? ms.vbProfit / ms.vbTotal : 0,
+        calibration: computeCalibration(ms.confidences, ms.corrects),
+        confidentPickCount: ms.cpTotal,
+        confidentPickHits: ms.cpHits,
+        confidentPickHitRate: ms.cpTotal > 0 ? ms.cpHits / ms.cpTotal : 0,
+        confidentPickByLevel: ms.cpByLevel,
+        coverage: ms.total > 0 ? ms.cpTotal / ms.total : 0,
       }
     })
 
-  // Son 100 tahmin (tarihe göre desc)
+  // Son 100 tahmin (tarihe gore desc)
   const recentPicks = [...analyzedPicks]
     .sort((a, b) => new Date(b.matchDate).getTime() - new Date(a.matchDate).getTime())
     .slice(0, 100)
@@ -295,10 +312,10 @@ export async function GET() {
     summary: {
       totalPredictions,
       overallAccuracy: totalPredictions > 0 ? overallCorrect / totalPredictions : 0,
-      valueBets: {
-        total: totalValueBets,
-        hits: totalValueBetHits,
-        roi: totalValueBets > 0 ? totalValueBetProfit / totalValueBets : 0,
+      confidentPicks: {
+        total: totalConfidentPicks,
+        hits: totalConfidentHits,
+        hitRate: totalConfidentPicks > 0 ? totalConfidentHits / totalConfidentPicks : 0,
       },
     },
     markets,
