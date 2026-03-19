@@ -1,5 +1,5 @@
 """
-Tahmin uretimi -- upcoming fixtures icin.
+Tahmin uretimi -- upcoming fixtures ve retrospektif backtest.
 
 Egitilmis modelleri yukler, feature'lari hesaplar,
 confident pick sinyalleri uretir ve ml_predictions tablosuna yazar.
@@ -8,6 +8,7 @@ confident pick sinyalleri uretir ve ml_predictions tablosuna yazar.
 import os
 import json
 import logging
+import re
 from datetime import datetime
 
 import numpy as np
@@ -19,6 +20,12 @@ from ml.config import MARKETS, ML_MODELS_DIR, PAGE_SIZE, CONFIDENCE_LEVEL_OFFSET
 from ml.features import build_features, get_feature_columns, load_all_data
 
 logger = logging.getLogger("ml.predict")
+
+# ---------------------------------------------------------------------------
+# Ortak yardimci fonksiyonlar
+# ---------------------------------------------------------------------------
+
+SCORE_RE = re.compile(r"\d+\s*[-:]\s*\d+")
 
 
 def _load_models() -> dict:
@@ -59,30 +66,6 @@ def _load_thresholds() -> dict:
             return json.load(f)
     logger.warning("  thresholds.json bulunamadi, varsayilan degerler kullanilacak.")
     return {}
-
-
-def _fetch_upcoming_match_codes() -> list:
-    """Gelecek maclarin match_code'larini getir."""
-    now = datetime.now().isoformat()
-    codes = []
-    offset = 0
-    while True:
-        resp = (
-            supabase.table("matches")
-            .select("match_code")
-            .gte("match_date", now)
-            .order("match_date")
-            .range(offset, offset + PAGE_SIZE - 1)
-            .execute()
-        )
-        batch = resp.data
-        if not batch:
-            break
-        codes.extend([r["match_code"] for r in batch])
-        if len(batch) < PAGE_SIZE:
-            break
-        offset += PAGE_SIZE
-    return codes
 
 
 def _get_implied_prob(row, market, outcome_idx):
@@ -128,42 +111,8 @@ def _get_confidence_level(confidence: float, threshold: float) -> str:
     return None
 
 
-def predict_upcoming():
-    """Gelecek maclar icin tahmin uret ve DB'ye yaz."""
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-
-    logger.info("  Tahmin uretimi basliyor...")
-
-    # Modelleri yukle
-    models = _load_models()
-    if not models:
-        logger.error("  Hic model bulunamadi. Once train-models calistirin.")
-        return
-
-    feature_cols = _load_feature_cols()
-    model_version = _load_model_version()
-    thresholds = _load_thresholds()
-
-    # Upcoming match codes
-    upcoming_codes = _fetch_upcoming_match_codes()
-    if not upcoming_codes:
-        logger.info("  Gelecek mac bulunamadi.")
-        return
-
-    logger.info(f"  {len(upcoming_codes)} gelecek mac bulundu")
-
-    # Tum veriyi yukle ve feature hesapla (rolling stats icin gecmis veri gerekli)
-    df = build_features()
-
-    # Sadece upcoming maclari filtrele
-    upcoming_df = df[df["match_code"].isin(upcoming_codes)].copy()
-    if upcoming_df.empty:
-        logger.info("  Feature hesaplanabilir gelecek mac yok.")
-        return
-
-    logger.info(f"  {len(upcoming_df)} mac icin feature hesaplandi")
-
-    # Her market icin tahmin
+def _predict_and_write(target_df, models, feature_cols, model_version, thresholds, label):
+    """Ortak tahmin + DB yazma mantigi."""
     total_predictions = 0
     total_confident = 0
 
@@ -171,16 +120,10 @@ def predict_upcoming():
         labels = _market_labels(market)
         num_classes = len(labels)
 
-        # Threshold bilgisi
         mkt_threshold = thresholds.get(market, {})
         threshold_val = mkt_threshold.get("threshold", 0.60)
 
-        # Feature sutunlarini kontrol et
-        missing_cols = [c for c in feature_cols if c not in upcoming_df.columns]
-        if missing_cols:
-            logger.warning(f"  {market}: {len(missing_cols)} eksik feature sutunu")
-
-        X = upcoming_df.reindex(columns=feature_cols)
+        X = target_df.reindex(columns=feature_cols)
 
         try:
             proba = model.predict_proba(X)
@@ -188,17 +131,14 @@ def predict_upcoming():
             logger.error(f"  {market} tahmin hatasi: {e}")
             continue
 
-        # Her mac icin tahmin ve confident pick
         predictions = []
-        for idx, (_, row) in enumerate(upcoming_df.iterrows()):
+        for idx, (_, row) in enumerate(target_df.iterrows()):
             prob_dict = {labels[i]: round(float(proba[idx, i]), 4) for i in range(num_classes)}
 
-            # En yuksek olasilikli sonuc
             best_idx = int(np.argmax(proba[idx]))
             predicted_outcome = labels[best_idx]
             confidence = float(proba[idx, best_idx])
 
-            # Confident pick tespiti
             confident_picks = []
             conf_level = _get_confidence_level(confidence, threshold_val)
             if conf_level:
@@ -224,25 +164,154 @@ def predict_upcoming():
             predictions.append(pred_row)
             total_confident += len(confident_picks)
 
-        # Toplu upsert
+        # Toplu upsert (500'lik batch'ler halinde)
         if predictions:
-            try:
-                supabase.table("ml_predictions").upsert(
-                    predictions,
-                    on_conflict="match_code,market,model_version",
-                ).execute()
-                total_predictions += len(predictions)
-                cp_count = sum(1 for p in predictions if p["confident_picks"])
-                logger.info(f"  {market.upper()}: {len(predictions)} tahmin, {cp_count} emin tahmin")
-            except Exception as e:
-                logger.error(f"  {market} DB yazim hatasi: {e}")
+            batch_size = 500
+            for i in range(0, len(predictions), batch_size):
+                batch = predictions[i:i + batch_size]
+                try:
+                    supabase.table("ml_predictions").upsert(
+                        batch,
+                        on_conflict="match_code,market,model_version",
+                    ).execute()
+                except Exception as e:
+                    logger.error(f"  {market} DB yazim hatasi (batch {i}): {e}")
 
-    # Ozet
+            total_predictions += len(predictions)
+            cp_count = sum(1 for p in predictions if p["confident_picks"])
+            logger.info(f"  {market.upper()}: {len(predictions)} tahmin, {cp_count} emin tahmin")
+
     logger.info(f"\n{'='*60}")
-    logger.info(f"  TAHMIN TAMAMLANDI")
+    logger.info(f"  {label} TAMAMLANDI")
     logger.info(f"   Toplam tahmin: {total_predictions}")
     logger.info(f"   Emin tahmin sinyali: {total_confident}")
     logger.info(f"   Model versiyonu: {model_version}")
+
+
+# ---------------------------------------------------------------------------
+# Upcoming predict (mevcut islevsellik)
+# ---------------------------------------------------------------------------
+
+def _fetch_upcoming_match_codes() -> list:
+    """Gelecek maclarin match_code'larini getir."""
+    now = datetime.now().isoformat()
+    codes = []
+    offset = 0
+    while True:
+        resp = (
+            supabase.table("matches")
+            .select("match_code")
+            .gte("match_date", now)
+            .order("match_date")
+            .range(offset, offset + PAGE_SIZE - 1)
+            .execute()
+        )
+        batch = resp.data
+        if not batch:
+            break
+        codes.extend([r["match_code"] for r in batch])
+        if len(batch) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+    return codes
+
+
+def predict_upcoming():
+    """Hem gelecek hem oyanmis maclar icin tahmin uret ve DB'ye yaz."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logger.info("  Tahmin uretimi basliyor...")
+
+    models = _load_models()
+    if not models:
+        logger.error("  Hic model bulunamadi. Once train-models calistirin.")
+        return
+
+    feature_cols = _load_feature_cols()
+    model_version = _load_model_version()
+    thresholds = _load_thresholds()
+
+    # Upcoming + settled match code'larini topla
+    upcoming_codes = _fetch_upcoming_match_codes()
+    settled_codes = _fetch_settled_match_codes()
+    all_codes = list(set(upcoming_codes + settled_codes))
+
+    if not all_codes:
+        logger.info("  Tahmin edilecek mac bulunamadi.")
+        return
+
+    logger.info(f"  {len(upcoming_codes)} gelecek + {len(settled_codes)} oyanmis = {len(all_codes)} mac bulundu")
+
+    # Feature hesapla (tum veri — rolling stats icin gecmis gerekli)
+    df = build_features()
+    target_df = df[df["match_code"].isin(all_codes)].copy()
+    if target_df.empty:
+        logger.info("  Feature hesaplanabilir mac yok.")
+        return
+
+    logger.info(f"  {len(target_df)} mac icin feature hesaplandi")
+    _predict_and_write(target_df, models, feature_cols, model_version, thresholds, "TAHMIN")
+
+
+# ---------------------------------------------------------------------------
+# Retrospektif backtest
+# ---------------------------------------------------------------------------
+
+def _fetch_settled_match_codes() -> list:
+    """Oyanmis maclarin match_code'larini getir (score_ft gercek skor iceren)."""
+    codes = []
+    offset = 0
+    while True:
+        resp = (
+            supabase.table("matches")
+            .select("match_code, score_ft")
+            .neq("score_ft", "v")
+            .order("match_date", desc=True)
+            .range(offset, offset + PAGE_SIZE - 1)
+            .execute()
+        )
+        batch = resp.data
+        if not batch:
+            break
+        for r in batch:
+            if r.get("score_ft") and SCORE_RE.search(r["score_ft"]):
+                codes.append(r["match_code"])
+        if len(batch) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+    return codes
+
+
+def predict_backtest():
+    """Gecmiste oyanmis maclar icin retrospektif tahmin uret ve DB'ye yaz."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logger.info("  Retrospektif backtest basliyor...")
+
+    models = _load_models()
+    if not models:
+        logger.error("  Hic model bulunamadi. Once train-models calistirin.")
+        return
+
+    feature_cols = _load_feature_cols()
+    model_version = _load_model_version()
+    thresholds = _load_thresholds()
+
+    settled_codes = _fetch_settled_match_codes()
+    if not settled_codes:
+        logger.info("  Oyanmis mac bulunamadi.")
+        return
+
+    logger.info(f"  {len(settled_codes)} oyanmis mac bulundu")
+
+    # Feature hesapla (tum veri uzerinden — rolling stats icin gecmis gerekli)
+    df = build_features()
+
+    settled_df = df[df["match_code"].isin(settled_codes)].copy()
+    if settled_df.empty:
+        logger.info("  Feature hesaplanabilir oyanmis mac yok.")
+        return
+
+    logger.info(f"  {len(settled_df)} mac icin feature hesaplandi, tahmin uretiliyor...")
+    _predict_and_write(settled_df, models, feature_cols, model_version, thresholds, "RETROSPEKTIF BACKTEST")
 
 
 if __name__ == "__main__":

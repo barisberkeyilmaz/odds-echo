@@ -405,10 +405,16 @@ export default function MLBacktestDashboard() {
       {/* Empty */}
       {isEmpty && (
         <div className="text-center py-16 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)]">
-          <p className="text-sm text-[var(--text-tertiary)]">ML backtest verisi bulunamadi.</p>
-          <p className="text-xs text-[var(--text-muted)] mt-2">
-            Once <code className="font-mono">python predict.py</code> calistirarak tahmin uretin.
+          <p className="text-sm text-[var(--text-tertiary)]">
+            {data && data.totalMatchesWithPrediction > 0
+              ? 'Henuz oyanmis mac yok. Tahmin edilen maclar oyandikca backtest verileri burada gorunecek.'
+              : 'ML backtest verisi bulunamadi.'}
           </p>
+          {(!data || data.totalMatchesWithPrediction === 0) && (
+            <p className="text-xs text-[var(--text-muted)] mt-2">
+              Once <code className="font-mono">python main.py predict</code> calistirarak tahmin uretin.
+            </p>
+          )}
         </div>
       )}
 

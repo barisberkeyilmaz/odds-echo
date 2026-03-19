@@ -167,7 +167,15 @@ export async function GET() {
 
   // En son model version
   const latestVersion = allPreds[0].model_version
-  const preds = allPreds.filter((p) => p.model_version === latestVersion)
+
+  // Deduplicate: ayni match_code + market icin sadece bir tahmin tut
+  const predMap = new Map<string, RawPredictionRow>()
+  for (const p of allPreds) {
+    if (p.model_version !== latestVersion) continue
+    const key = `${p.match_code}__${p.market}`
+    if (!predMap.has(key)) predMap.set(key, p)
+  }
+  const preds = [...predMap.values()]
 
   // 2. Bu maclarin bilgilerini cek
   const matchCodes = [...new Set(preds.map((p) => p.match_code))]
@@ -186,10 +194,16 @@ export async function GET() {
     }
   }
 
+  // Settled = gercek skor var + mac saati en az 2 saat oncesinde
+  const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
+  const isSettled = (m: MatchRow) => {
+    if (!m.score_ft || !m.score_ft.match(/\d+\s*[-:]\s*\d+/)) return false
+    if (m.score_ft === 'v') return false
+    return m.match_date < twoHoursAgo
+  }
+
   const totalMatchesWithPrediction = matchCodes.length
-  const settledMatchCodes = [...matchMap.values()].filter(
-    (m) => m.score_ft && m.score_ft.match(/\d+\s*[-:]\s*\d+/)
-  ).length
+  const settledMatchCodes = [...matchMap.values()].filter(isSettled).length
 
   // 3. Analiz: sadece oyanmis maclar
   const analyzedPicks: AnalyzedPick[] = []
@@ -209,7 +223,7 @@ export async function GET() {
 
   for (const pred of preds) {
     const match = matchMap.get(pred.match_code)
-    if (!match || !match.score_ft) continue
+    if (!match || !isSettled(match)) continue
 
     const actual = computeActual(pred.market, match.score_ft, match.score_ht)
     if (!actual) continue

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS ml_predictions (
   probabilities JSONB NOT NULL,
   predicted_outcome VARCHAR(20),
   confidence FLOAT,
-  value_bets JSONB,
+  confident_picks JSONB,
   model_version VARCHAR(50),
   created_at TIMESTAMP DEFAULT NOW(),
   UNIQUE(match_code, market, model_version)

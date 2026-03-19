@@ -20,7 +20,7 @@ export default function MLBacktestPage() {
             ML Backtest Sonuçları
           </h2>
           <p className="text-sm text-[var(--text-tertiary)]">
-            ML modelinin geçmiş maçlardaki tahmin isabeti, kalibrasyon kalitesi ve value bet ROI analizi.
+            ML modelinin geçmiş maçlardaki tahmin isabeti, kalibrasyon kalitesi ve emin tahmin performans analizi.
           </p>
         </div>
 

@@ -103,6 +103,7 @@ def predict_cmd():
     from ml.predict import predict_upcoming
     predict_upcoming()
 
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
