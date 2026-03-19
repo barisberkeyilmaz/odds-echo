@@ -215,132 +215,126 @@ function CalibrationTable({ markets }: { markets: MarketStat[] }) {
   )
 }
 
-function RecentPicksTable({ picks }: { picks: RecentPick[] }) {
-  const [page, setPage] = useState(0)
-  const pageSize = 50
-  const totalPages = Math.ceil(picks.length / pageSize)
-  const paged = picks.slice(page * pageSize, (page + 1) * pageSize)
+type GroupedMatch = {
+  matchCode: string
+  homeTeam: string
+  awayTeam: string
+  matchDate: string
+  scoreFt: string
+  picks: RecentPick[]
+  hitCount: number
+  totalCount: number
+}
 
+const MARKET_ORDER = ['ms', 'kg', 'au25', 'tg', 'iyms']
+
+function groupPicksByMatch(picks: RecentPick[]): GroupedMatch[] {
+  const map = new Map<string, GroupedMatch>()
+  for (const pick of picks) {
+    if (!map.has(pick.matchCode)) {
+      map.set(pick.matchCode, {
+        matchCode: pick.matchCode,
+        homeTeam: pick.homeTeam,
+        awayTeam: pick.awayTeam,
+        matchDate: pick.matchDate,
+        scoreFt: pick.scoreFt,
+        picks: [],
+        hitCount: 0,
+        totalCount: 0,
+      })
+    }
+    const group = map.get(pick.matchCode)!
+    group.picks.push(pick)
+    group.totalCount++
+    if (pick.isCorrect) group.hitCount++
+  }
+  // Her grup icinde marketleri sirala
+  for (const g of map.values()) {
+    g.picks.sort((a, b) => MARKET_ORDER.indexOf(a.market) - MARKET_ORDER.indexOf(b.market))
+  }
+  return [...map.values()].sort((a, b) => new Date(b.matchDate).getTime() - new Date(a.matchDate).getTime())
+}
+
+function MatchPickCard({ match }: { match: GroupedMatch }) {
   return (
-    <div>
-      {/* Desktop */}
-      <div className="hidden sm:block overflow-x-auto rounded-lg border border-[var(--border-primary)]">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-[var(--bg-tertiary)] text-[var(--text-tertiary)] text-xs uppercase tracking-wider">
-              <th className="text-left px-4 py-2.5 font-medium">Tarih</th>
-              <th className="text-left px-3 py-2.5 font-medium">Mac</th>
-              <th className="text-left px-3 py-2.5 font-medium">Market</th>
-              <th className="text-center px-3 py-2.5 font-medium">Tahmin</th>
-              <th className="text-center px-3 py-2.5 font-medium">Gercek</th>
-              <th className="text-right px-3 py-2.5 font-medium">Guven</th>
-              <th className="text-center px-3 py-2.5 font-medium">Skor</th>
-              <th className="text-center px-3 py-2.5 font-medium">Seviye</th>
-              <th className="text-center px-4 py-2.5 font-medium">Sonuc</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paged.map((pick, i) => {
-              const levelInfo = pick.confidenceLevel ? CONFIDENCE_LEVEL_LABELS[pick.confidenceLevel] : null
-              return (
-                <tr
-                  key={`${pick.matchCode}-${pick.market}-${i}`}
-                  className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-tertiary)] transition-colors"
-                >
-                  <td className="px-4 py-2.5 font-mono text-xs text-[var(--text-muted)]">
-                    {formatDate(pick.matchDate)}
-                  </td>
-                  <td className="px-3 py-2.5 text-sm text-[var(--text-primary)]">
-                    {pick.homeTeam} - {pick.awayTeam}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-[color-mix(in_srgb,var(--accent-blue)_10%,transparent)] text-[var(--accent-blue)]">
-                      {pick.market.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-center font-mono tabular-nums text-xs font-medium text-[var(--text-secondary)]">
-                    {pick.predicted}
-                  </td>
-                  <td className="px-3 py-2.5 text-center font-mono tabular-nums text-xs font-medium text-[var(--text-secondary)]">
-                    {pick.actual}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums text-xs text-[var(--text-muted)]">
-                    {formatPct(pick.confidence)}
-                  </td>
-                  <td className="px-3 py-2.5 text-center font-mono text-xs text-[var(--text-secondary)]">
-                    {pick.scoreFt}
-                  </td>
-                  <td className="px-3 py-2.5 text-center">
-                    {levelInfo ? (
-                      <span className="text-[10px] font-bold" style={{ color: levelInfo.color }}>
-                        {levelInfo.text}
-                      </span>
-                    ) : (
-                      <span className="text-[var(--text-muted)] text-xs">&mdash;</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-center">
-                    {pick.isCorrect ? (
-                      <span className="text-[var(--accent-win)] font-bold text-sm">&#10003;</span>
-                    ) : (
-                      <span className="text-[var(--accent-loss)] font-bold text-sm">&#10007;</span>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+    <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--bg-tertiary)]">
+        <div className="min-w-0 flex-1">
+          <span className="text-sm font-medium text-[var(--text-primary)]">
+            {match.homeTeam} - {match.awayTeam}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="font-mono text-xs font-semibold text-[var(--text-secondary)]">{match.scoreFt}</span>
+          <span className="font-mono text-[10px] text-[var(--text-muted)]">{formatDate(match.matchDate)}</span>
+          <span className={`text-xs font-bold font-mono ${match.hitCount > 0 ? 'text-[var(--accent-win)]' : 'text-[var(--text-muted)]'}`}>
+            {match.hitCount}/{match.totalCount}
+          </span>
+        </div>
       </div>
 
-      {/* Mobile */}
-      <div className="block sm:hidden divide-y divide-[var(--border-subtle)] rounded-lg border border-[var(--border-primary)] overflow-hidden bg-[var(--bg-secondary)]">
-        {paged.map((pick, i) => {
+      {/* Market rows */}
+      <div className="divide-y divide-[var(--border-subtle)]">
+        {match.picks.map((pick) => {
           const levelInfo = pick.confidenceLevel ? CONFIDENCE_LEVEL_LABELS[pick.confidenceLevel] : null
           return (
-            <div key={`${pick.matchCode}-${pick.market}-${i}`} className="px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-[var(--text-primary)] truncate">
-                    {pick.homeTeam} - {pick.awayTeam}
-                  </div>
-                  <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                    {formatDate(pick.matchDate)} &bull; {pick.scoreFt}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-[color-mix(in_srgb,var(--accent-blue)_10%,transparent)] text-[var(--accent-blue)]">
-                    {pick.market.toUpperCase()}
-                  </span>
-                  {pick.isCorrect ? (
-                    <span className="text-[var(--accent-win)] font-bold text-sm">&#10003;</span>
-                  ) : (
-                    <span className="text-[var(--accent-loss)] font-bold text-sm">&#10007;</span>
-                  )}
-                </div>
+            <div key={pick.market} className="flex items-center px-4 py-2 gap-3">
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-[color-mix(in_srgb,var(--accent-blue)_10%,transparent)] text-[var(--accent-blue)] w-[42px] text-center shrink-0">
+                {pick.market.toUpperCase()}
+              </span>
+              <div className="flex items-center gap-1 min-w-[80px]">
+                <span className="font-mono tabular-nums text-xs text-[var(--text-secondary)]">{pick.predicted}</span>
+                <span className="text-[var(--text-muted)] text-[10px]">&rarr;</span>
+                <span className={`font-mono tabular-nums text-xs font-medium ${pick.isCorrect ? 'text-[var(--accent-win)]' : 'text-[var(--text-secondary)]'}`}>
+                  {pick.actual}
+                </span>
               </div>
-              <div className="flex items-center gap-4 mt-2 text-[10px]">
-                <span className="text-[var(--text-muted)]">
-                  Tahmin: <span className="font-mono text-[var(--text-secondary)]">{pick.predicted}</span>
+              <span className="font-mono tabular-nums text-[10px] text-[var(--text-muted)] w-[40px] text-right">
+                {formatPct(pick.confidence)}
+              </span>
+              {levelInfo ? (
+                <span className="text-[9px] font-bold w-[52px] text-center" style={{ color: levelInfo.color }}>
+                  {levelInfo.text}
                 </span>
-                <span className="text-[var(--text-muted)]">
-                  Gercek: <span className="font-mono text-[var(--text-secondary)]">{pick.actual}</span>
-                </span>
-                <span className="text-[var(--text-muted)]">
-                  Guven: <span className="font-mono text-[var(--text-secondary)]">{formatPct(pick.confidence)}</span>
-                </span>
-                {levelInfo && <span className="font-bold" style={{ color: levelInfo.color }}>{levelInfo.text}</span>}
-              </div>
+              ) : (
+                <span className="w-[52px]" />
+              )}
+              <span className="ml-auto shrink-0">
+                {pick.isCorrect ? (
+                  <span className="text-[var(--accent-win)] font-bold text-sm">&#10003;</span>
+                ) : (
+                  <span className="text-[var(--accent-loss)] font-bold text-sm">&#10007;</span>
+                )}
+              </span>
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+function RecentPicksTable({ picks }: { picks: RecentPick[] }) {
+  const [page, setPage] = useState(0)
+  const grouped = groupPicksByMatch(picks)
+  const pageSize = 20
+  const totalPages = Math.ceil(grouped.length / pageSize)
+  const paged = grouped.slice(page * pageSize, (page + 1) * pageSize)
+
+  return (
+    <div>
+      <div className="space-y-3">
+        {paged.map((match) => (
+          <MatchPickCard key={match.matchCode} match={match} />
+        ))}
       </div>
 
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between mt-3 px-1">
           <p className="text-xs text-[var(--text-muted)]">
-            {picks.length} sonuctan {page * pageSize + 1}&ndash;{Math.min((page + 1) * pageSize, picks.length)} arasi
+            {grouped.length} mactan {page * pageSize + 1}&ndash;{Math.min((page + 1) * pageSize, grouped.length)} arasi
           </p>
           <div className="flex gap-2">
             <button

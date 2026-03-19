@@ -314,10 +314,10 @@ export async function GET() {
       }
     })
 
-  // Son 100 tahmin (tarihe gore desc)
+  // Son 500 tahmin (tarihe gore desc) — frontend'de mac bazli gruplaniyor
   const recentPicks = [...analyzedPicks]
     .sort((a, b) => new Date(b.matchDate).getTime() - new Date(a.matchDate).getTime())
-    .slice(0, 100)
+    .slice(0, 500)
 
   return NextResponse.json({
     modelVersion: latestVersion,
