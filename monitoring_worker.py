@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import random
 import time
 from datetime import datetime, timedelta, timezone
@@ -99,8 +101,8 @@ def run_monitoring_worker(
                 queue.append(item)
                 existing_codes.add(mc)
 
-        # 2. Eski MONITORING/ERROR maçlar (last_try > 6 saat önce) — takılmış olabilir
-        stale_cutoff = (now - timedelta(hours=6)).strftime("%Y-%m-%d %H:%M:%S")
+        # 2. Eski MONITORING/ERROR maçlar (last_try > 3 saat önce) — takılmış olabilir
+        stale_cutoff = (now - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
         stale = []
         offset = 0
         while True:
@@ -126,7 +128,49 @@ def run_monitoring_worker(
                 queue.append(item)
                 existing_codes.add(mc)
 
-        logger.info("Added %d never-processed + %d stale matches", missing_date_count, stale_count)
+        # 3. Maç tarihi 3+ saat geçmiş ama hâlâ skor girilmemiş maçlar
+        finished_cutoff = (now - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+        unsettled_codes: set[str] = set()
+        offset = 0
+        while True:
+            page_resp = (
+                supabase.table("matches")
+                .select("match_code")
+                .lt("match_date", finished_cutoff)
+                .or_("score_ft.is.null,score_ft.eq.v")
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = page_resp.data or []
+            unsettled_codes.update(m["match_code"] for m in batch if m.get("match_code"))
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        # Bu maçların queue'daki durumunu kontrol et
+        unsettled_count = 0
+        unsettled_list = [c for c in unsettled_codes if c not in existing_codes]
+        for i in range(0, len(unsettled_list), 200):
+            chunk = unsettled_list[i : i + 200]
+            resp = (
+                supabase.table("match_queue")
+                .select("match_code, match_url, status, retry_count")
+                .neq("status", "SUCCESS")
+                .neq("status", "PERMANENT_ERROR")
+                .in_("match_code", chunk)
+                .execute()
+            )
+            for item in (resp.data or []):
+                mc = item.get("match_code")
+                if mc and mc not in existing_codes:
+                    unsettled_count += 1
+                    queue.append(item)
+                    existing_codes.add(mc)
+
+        logger.info(
+            "Added %d never-processed + %d stale + %d unsettled matches",
+            missing_date_count, stale_count, unsettled_count,
+        )
 
     if not queue:
         logger.info(
@@ -136,8 +180,8 @@ def run_monitoring_worker(
         return
 
     logger.info(
-        "Found %d matches to process (missing_date=%d)",
-        len(queue), missing_date_count,
+        "Found %d matches to process",
+        len(queue),
     )
 
     processed = 0
@@ -219,6 +263,133 @@ def run_monitoring_worker(
         "Monitoring summary: processed=%d success=%d monitoring=%d error=%d",
         processed, success_count, still_monitoring_count, error_count,
     )
+
+    # --- Hafif queue/matches senkronizasyonu ---
+    if include_missing_dates:
+        _sync_queue_with_matches(logger)
+
+
+def _sync_queue_with_matches(logger) -> None:
+    """
+    Hafif queue ↔ matches senkronizasyonu. Her monitoring çalışmasının sonunda koşar.
+
+    1. matches'da bitmiş (score_ft dolu, != 'v') ama queue'da SUCCESS olmayan → SUCCESS yap
+    2. matches'da var ama queue'da hiç kaydı olmayan → queue'ya MONITORING ekle
+    """
+    page_size = 1000
+    sync_success = 0
+    sync_inserted = 0
+
+    # --- 1. Bitmiş maçlar: queue'yu SUCCESS'e çek ---
+    # Queue'da SUCCESS olmayan kayıtları al
+    non_success_codes: dict[str, str] = {}  # match_code → current status
+    offset = 0
+    while True:
+        resp = (
+            supabase.table("match_queue")
+            .select("match_code, status")
+            .neq("status", "SUCCESS")
+            .neq("status", "PERMANENT_ERROR")
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = resp.data or []
+        for item in batch:
+            mc = item.get("match_code")
+            if mc:
+                non_success_codes[mc] = item.get("status", "")
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    if non_success_codes:
+        # Bu maçlardan hangilerinin skoru var?
+        code_list = list(non_success_codes.keys())
+        finished_codes: list[str] = []
+        for i in range(0, len(code_list), 200):
+            chunk = code_list[i : i + 200]
+            resp = (
+                supabase.table("matches")
+                .select("match_code, score_ft")
+                .in_("match_code", chunk)
+                .execute()
+            )
+            for row in (resp.data or []):
+                score = row.get("score_ft")
+                if score and score != "v":
+                    finished_codes.append(row["match_code"])
+
+        # Toplu SUCCESS güncelleme
+        for i in range(0, len(finished_codes), 200):
+            chunk = finished_codes[i : i + 200]
+            supabase.table("match_queue").update(
+                {"status": "SUCCESS", "error_log": "Synced: score exists in matches"}
+            ).in_("match_code", chunk).execute()
+        sync_success = len(finished_codes)
+
+    # --- 2. matches'da var ama queue'da yok → queue'ya ekle ---
+    # Son 7 gündeki maçlara bak (çok eski maçları karıştırmamak için)
+    cutoff = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    recent_codes: set[str] = set()
+    offset = 0
+    while True:
+        resp = (
+            supabase.table("matches")
+            .select("match_code")
+            .gte("match_date", cutoff)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = resp.data or []
+        recent_codes.update(m["match_code"] for m in batch if m.get("match_code"))
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    if recent_codes:
+        # Queue'da hangileri var?
+        existing_in_queue: set[str] = set()
+        code_list = list(recent_codes)
+        for i in range(0, len(code_list), 200):
+            chunk = code_list[i : i + 200]
+            resp = (
+                supabase.table("match_queue")
+                .select("match_code")
+                .in_("match_code", chunk)
+                .execute()
+            )
+            existing_in_queue.update(m["match_code"] for m in (resp.data or []) if m.get("match_code"))
+
+        missing = recent_codes - existing_in_queue
+        if missing:
+            rows_to_insert = [
+                {
+                    "match_code": mc,
+                    "match_url": f"https://arsiv.mackolik.com/Match/Default.aspx?id={mc}",
+                    "status": "MONITORING",
+                    "error_log": "Auto-created: found in matches but not in queue",
+                }
+                for mc in missing
+            ]
+            for i in range(0, len(rows_to_insert), 100):
+                batch = rows_to_insert[i : i + 100]
+                try:
+                    supabase.table("match_queue").insert(batch, returning="minimal").execute()
+                    sync_inserted += len(batch)
+                except Exception:
+                    # Tek tek dene (duplicate olabilir)
+                    for row in batch:
+                        try:
+                            supabase.table("match_queue").insert(row, returning="minimal").execute()
+                            sync_inserted += 1
+                        except Exception:
+                            pass
+
+    if sync_success or sync_inserted:
+        logger.info(
+            "Queue sync: %d → SUCCESS, %d new queue entries created",
+            sync_success, sync_inserted,
+        )
 
 
 if __name__ == "__main__":

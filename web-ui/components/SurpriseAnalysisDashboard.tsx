@@ -90,7 +90,7 @@ type MatchSurpriseGroup = {
   bestScore: number
 }
 
-type SortKey = 'surpriseScore' | 'hitRate' | 'mlScore' | 'odds'
+type SortKey = 'surpriseScore' | 'hitRate' | 'mlScore' | 'mlProb' | 'odds'
 
 function formatTime(dateStr: string) {
   return new Date(dateStr).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
@@ -335,6 +335,12 @@ export default function SurpriseAnalysisDashboard({ fixtures, dateKey }: Props) 
         const bMax = Math.max(...b.entries.map((e) => e.mlSurpriseScore ?? 0))
         return bMax - aMax
       })
+    } else if (sortBy === 'mlProb') {
+      groups.sort((a, b) => {
+        const aMax = Math.max(...a.entries.map((e) => e.mlModelProb ?? 0))
+        const bMax = Math.max(...b.entries.map((e) => e.mlModelProb ?? 0))
+        return bMax - aMax
+      })
     } else {
       groups.sort((a, b) => {
         const aMax = Math.max(...a.entries.map((e) => e.oddValue))
@@ -370,6 +376,7 @@ export default function SurpriseAnalysisDashboard({ fixtures, dateKey }: Props) 
   const sortOptions: { value: SortKey; label: string }[] = [
     { value: 'surpriseScore', label: 'Sürpriz Skor' },
     { value: 'mlScore', label: 'ML Skor' },
+    { value: 'mlProb', label: 'ML %' },
     { value: 'hitRate', label: 'Tutma Oranı' },
     { value: 'odds', label: 'Oran Değeri' },
   ]
