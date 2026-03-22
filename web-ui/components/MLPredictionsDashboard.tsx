@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 
 // ---------------------------------------------------------------------------
@@ -88,12 +88,26 @@ function getOutcomeLabel(market: string, outcome: string): string {
 // Yardimcilar
 // ---------------------------------------------------------------------------
 
+type SortKey = 'confidence' | 'edge' | 'time'
+
 function formatTime(dateStr: string) {
   try {
     return new Date(dateStr).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
   } catch {
     return ''
   }
+}
+
+/** Bir confident pick'in edge'ini hesapla (ML olasılık - oran ima olasılığı) */
+function getEdge(cp: ConfidentPick): number {
+  if (cp.impliedProb == null || cp.impliedProb <= 0) return 0
+  return cp.confidence - cp.impliedProb
+}
+
+/** Maçın en yüksek edge'ini bul */
+function getBestEdge(match: MatchData): number {
+  if (match.confidentPicks.length === 0) return 0
+  return Math.max(...match.confidentPicks.map(getEdge))
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +259,8 @@ function MatchCard({ match }: { match: MatchData }) {
           <div className="mt-2 pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-1">
             {match.confidentPicks.map((cp, i) => {
               const levelInfo = CONFIDENCE_LEVEL_LABELS[cp.confidenceLevel] ?? CONFIDENCE_LEVEL_LABELS.olasi
+              const edge = getEdge(cp)
+              const edgePct = Math.round(edge * 100)
               return (
                 <div key={`${cp.market}-${cp.outcome}-${i}`} className="flex items-center gap-2 text-[11px]">
                   <span className="font-semibold" style={{ color: levelInfo.color }}>
@@ -256,6 +272,15 @@ function MatchCard({ match }: { match: MatchData }) {
                   <span className="font-mono tabular-nums font-semibold" style={{ color: levelInfo.color }}>
                     %{Math.round(cp.confidence * 100)}
                   </span>
+                  {edge > 0 && (
+                    <span className={`font-mono tabular-nums text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                      edgePct >= 15 ? 'bg-[var(--accent-win-bg)] text-[var(--accent-win)]'
+                        : edgePct >= 5 ? 'bg-[var(--accent-draw-bg)] text-[var(--accent-draw)]'
+                        : 'text-[var(--text-muted)]'
+                    }`}>
+                      +{edgePct}% edge
+                    </span>
+                  )}
                 </div>
               )
             })}
@@ -270,9 +295,16 @@ function MatchCard({ match }: { match: MatchData }) {
 // Ana Dashboard
 // ---------------------------------------------------------------------------
 
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'confidence', label: 'Guven' },
+  { value: 'edge', label: 'Edge' },
+  { value: 'time', label: 'Saat' },
+]
+
 export default function MLPredictionsDashboard({ dateKey }: { dateKey: string }) {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [sortBy, setSortBy] = useState<SortKey>('edge')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -299,8 +331,32 @@ export default function MLPredictionsDashboard({ dateKey }: { dateKey: string })
     const confidentCount = data.matches.reduce((sum, m) => sum + m.confidentPicks.length, 0)
     const allConfs = data.matches.flatMap((m) => m.confidentPicks.map((cp) => cp.confidence))
     const maxConf = allConfs.length > 0 ? Math.max(...allConfs) : 0
-    return { totalMatches: data.matches.length, confidentCount, maxConf }
+    const allEdges = data.matches.map(getBestEdge)
+    const maxEdge = allEdges.length > 0 ? Math.max(...allEdges) : 0
+    return { totalMatches: data.matches.length, confidentCount, maxConf, maxEdge }
   }, [data])
+
+  const sortedMatches = useMemo(() => {
+    if (!data) return []
+    const matches = [...data.matches]
+    if (sortBy === 'edge') {
+      matches.sort((a, b) => {
+        const edgeDiff = getBestEdge(b) - getBestEdge(a)
+        if (edgeDiff !== 0) return edgeDiff
+        return new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime()
+      })
+    } else if (sortBy === 'confidence') {
+      matches.sort((a, b) => {
+        const aConf = a.confidentPicks.length > 0 ? a.confidentPicks[0].confidence : 0
+        const bConf = b.confidentPicks.length > 0 ? b.confidentPicks[0].confidence : 0
+        if (aConf !== bConf) return bConf - aConf
+        return new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime()
+      })
+    } else {
+      matches.sort((a, b) => new Date(a.matchDate).getTime() - new Date(b.matchDate).getTime())
+    }
+    return matches
+  }, [data, sortBy])
 
   const isEmpty = !loading && (!data || data.matches.length === 0)
 
@@ -325,7 +381,7 @@ export default function MLPredictionsDashboard({ dateKey }: { dateKey: string })
       {!loading && data && stats && (
         <>
           {/* Ozet kartlar */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-4 py-3">
               <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Mac</p>
               <p className="text-xl font-bold font-mono tabular-nums text-[var(--text-primary)]">{stats.totalMatches}</p>
@@ -340,18 +396,43 @@ export default function MLPredictionsDashboard({ dateKey }: { dateKey: string })
                 {stats.maxConf > 0 ? `%${Math.round(stats.maxConf * 100)}` : '\u2014'}
               </p>
             </div>
+            <div className="bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">En Yuksek Edge</p>
+              <p className={`text-xl font-bold font-mono tabular-nums ${stats.maxEdge > 0.05 ? 'text-[var(--accent-win)]' : 'text-[var(--text-primary)]'}`}>
+                {stats.maxEdge > 0 ? `+%${Math.round(stats.maxEdge * 100)}` : '\u2014'}
+              </p>
+            </div>
           </div>
 
-          {/* Model versiyonu */}
-          {data.modelVersion && (
-            <p className="text-[10px] text-[var(--text-muted)]">
-              Model: <span className="font-mono">{data.modelVersion}</span>
-            </p>
-          )}
+          {/* Siralama + Model versiyonu */}
+          <div className="flex items-center justify-between">
+            {data.modelVersion && (
+              <p className="text-[10px] text-[var(--text-muted)]">
+                Model: <span className="font-mono">{data.modelVersion}</span>
+              </p>
+            )}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-[var(--text-muted)]">Sirala:</span>
+              {SORT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setSortBy(opt.value)}
+                  className={`text-[10px] px-2 py-1 rounded-md font-medium transition-colors ${
+                    sortBy === opt.value
+                      ? 'bg-[var(--accent-blue)] text-white'
+                      : 'text-[var(--text-tertiary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Mac kartlari */}
           <div className="space-y-3">
-            {data.matches.map((match) => (
+            {sortedMatches.map((match) => (
               <MatchCard key={match.matchCode} match={match} />
             ))}
           </div>

@@ -77,7 +77,7 @@ export default async function MLPredictionsPage({
 
   const selectedDateKey = isValidDateKey(dateParam)
     ? dateParam!
-    : findClosestDate(availableDateKeys, todayKey)
+    : todayKey
 
   return (
     <main className="min-h-screen bg-grid pb-20 md:pb-0">

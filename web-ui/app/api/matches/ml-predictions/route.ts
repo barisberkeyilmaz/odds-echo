@@ -171,9 +171,9 @@ export async function GET(request: Request) {
     predMap.set(pred.match_code, existing)
   }
 
-  // 4. Sadece tahmini olan maclari dondur
+  // 4. Sadece tahmini olan ve henuz oynanmamis maclari dondur
   const result = matches
-    .filter((m) => predMap.has(m.match_code))
+    .filter((m) => predMap.has(m.match_code) && (!m.score_ft || m.score_ft === 'v'))
     .map((match) => {
       const markets = predMap.get(match.match_code)!
       const allConfidentPicks = markets.flatMap((m) =>
@@ -187,7 +187,7 @@ export async function GET(request: Request) {
         awayTeam: match.away_team,
         league: match.league,
         matchDate: match.match_date,
-        isPlayed: match.score_ft !== null && match.score_ft !== '',
+        isPlayed: !!match.score_ft && match.score_ft !== 'v',
         markets,
         confidentPicks: allConfidentPicks.sort((a, b) => b.confidence - a.confidence),
       }
