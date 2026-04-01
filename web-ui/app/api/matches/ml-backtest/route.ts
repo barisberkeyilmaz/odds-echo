@@ -142,7 +142,21 @@ function computeCalibration(confidences: number[], corrects: boolean[]): Calibra
 // ---------------------------------------------------------------------------
 
 export async function GET() {
-  // 1. Tum ml_predictions cek
+  // 1. En son model versiyonunu bul
+  const { data: versionData, error: versionError } = await supabase
+    .from('ml_predictions')
+    .select('model_version')
+    .order('model_version', { ascending: false })
+    .limit(1)
+
+  if (versionError) return NextResponse.json({ error: versionError.message }, { status: 500 })
+  if (!versionData || versionData.length === 0) {
+    return NextResponse.json({ modelVersion: null, summary: null, markets: [], recentPicks: [] })
+  }
+
+  const latestVersion = versionData[0].model_version
+
+  // 2. Sadece en son versiyonun tahminlerini cek
   let allPreds: RawPredictionRow[] = []
   const batchSize = 1000
   let offset = 0
@@ -151,7 +165,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from('ml_predictions')
       .select('match_code, market, probabilities, predicted_outcome, confidence, confident_picks, model_version')
-      .order('model_version', { ascending: false })
+      .eq('model_version', latestVersion)
       .range(offset, offset + batchSize - 1)
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -165,13 +179,9 @@ export async function GET() {
     return NextResponse.json({ modelVersion: null, summary: null, markets: [], recentPicks: [] })
   }
 
-  // En son model version
-  const latestVersion = allPreds[0].model_version
-
   // Deduplicate: ayni match_code + market icin sadece bir tahmin tut
   const predMap = new Map<string, RawPredictionRow>()
   for (const p of allPreds) {
-    if (p.model_version !== latestVersion) continue
     const key = `${p.match_code}__${p.market}`
     if (!predMap.has(key)) predMap.set(key, p)
   }

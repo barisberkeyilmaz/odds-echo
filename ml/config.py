@@ -5,6 +5,12 @@ ML Pipeline sabitleri ve konfigürasyonu.
 # ── Rolling pencere boyutları ──────────────────────────────────────
 ROLLING_WINDOWS = [5, 10]
 
+# ── ELO Rating sabitleri ──────────────────────────────────────────
+ELO_K_FACTOR = 25                    # Base K-faktörü
+ELO_HOME_ADVANTAGE = 60              # Ev sahibi avantajı (ELO puan)
+ELO_SEASON_REGRESSION = 0.75         # Sezon başı soft reset: elo*R + 1500*(1-R)
+ELO_MIN_LEAGUE_MATCHES = 30          # Bu altındaki ligler NaN ELO alır
+
 # ── LightGBM parametreleri ─────────────────────────────────────────
 LGBM_PARAMS = {
     "learning_rate": 0.05,

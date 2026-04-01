@@ -17,6 +17,7 @@ from config import supabase
 from ml.config import (
     PAGE_SIZE, ODDS_COLUMNS, ROLLING_WINDOWS,
     STAT_COLUMNS_HOME, STAT_COLUMNS_AWAY,
+    ELO_K_FACTOR, ELO_HOME_ADVANTAGE, ELO_SEASON_REGRESSION, ELO_MIN_LEAGUE_MATCHES,
 )
 
 logger = logging.getLogger("ml.features")
@@ -270,6 +271,160 @@ def _safe_json_get(val, key):
     return np.nan
 
 
+# ── Grup E: ELO Rating (lig bazlı bağımsız) ─────────────────────
+
+def _add_elo_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Lig bazlı ELO rating sistemi. Pre-match state → leakage-free."""
+    from collections import deque
+
+    df["elo_home"] = np.nan
+    df["elo_away"] = np.nan
+    df["elo_diff"] = np.nan
+    df["elo_home_form"] = np.nan
+    df["elo_away_form"] = np.nan
+
+    league_counts = df["league"].value_counts()
+    valid_leagues = set(league_counts[league_counts >= ELO_MIN_LEAGUE_MATCHES].index)
+
+    mask = df["league"].isin(valid_leagues)
+    indices = df.index[mask].values
+
+    home_teams = df.loc[indices, "home_team"].values
+    away_teams = df.loc[indices, "away_team"].values
+    leagues = df.loc[indices, "league"].values
+    seasons = df.loc[indices, "season"].values
+    home_goals = df.loc[indices, "_home_goals"].values
+    away_goals = df.loc[indices, "_away_goals"].values
+
+    elo_state = {}
+    season_tracker = {}
+    elo_history = {}
+
+    out_elo_home = np.full(len(indices), np.nan)
+    out_elo_away = np.full(len(indices), np.nan)
+    out_elo_diff = np.full(len(indices), np.nan)
+    out_elo_home_form = np.full(len(indices), np.nan)
+    out_elo_away_form = np.full(len(indices), np.nan)
+
+    for i in range(len(indices)):
+        league = leagues[i]
+        season = seasons[i]
+        home = home_teams[i]
+        away = away_teams[i]
+        hg = home_goals[i]
+        ag = away_goals[i]
+
+        # Sezon değişimi → soft regression
+        if league in season_tracker:
+            if season is not None and season != season_tracker[league]:
+                for key in list(elo_state.keys()):
+                    if key[0] == league:
+                        elo_state[key] = (
+                            elo_state[key] * ELO_SEASON_REGRESSION
+                            + 1500 * (1 - ELO_SEASON_REGRESSION)
+                        )
+                for key in list(elo_history.keys()):
+                    if key[0] == league:
+                        elo_history[key].clear()
+        season_tracker[league] = season
+
+        h_key = (league, home)
+        a_key = (league, away)
+        elo_h = elo_state.get(h_key, 1500.0)
+        elo_a = elo_state.get(a_key, 1500.0)
+
+        # Pre-match ELO kaydet
+        out_elo_home[i] = elo_h
+        out_elo_away[i] = elo_a
+        out_elo_diff[i] = elo_h - elo_a
+
+        # Form (son 5 maçtaki toplam ELO değişimi)
+        h_hist = elo_history.get(h_key, deque(maxlen=5))
+        a_hist = elo_history.get(a_key, deque(maxlen=5))
+        out_elo_home_form[i] = sum(h_hist) if len(h_hist) > 0 else np.nan
+        out_elo_away_form[i] = sum(a_hist) if len(a_hist) > 0 else np.nan
+
+        # Maç sonucu varsa ELO güncelle
+        if not (np.isnan(hg) or np.isnan(ag)):
+            hg_int, ag_int = int(hg), int(ag)
+
+            exp_h = 1.0 / (1.0 + 10 ** ((elo_a - elo_h - ELO_HOME_ADVANTAGE) / 400))
+            exp_a = 1.0 - exp_h
+
+            if hg_int > ag_int:
+                actual_h, actual_a = 1.0, 0.0
+            elif hg_int == ag_int:
+                actual_h, actual_a = 0.5, 0.5
+            else:
+                actual_h, actual_a = 0.0, 1.0
+
+            goal_diff = abs(hg_int - ag_int)
+            gd_mult = max(np.log(1 + goal_diff), 1.0)
+
+            k = ELO_K_FACTOR * gd_mult
+            delta_h = k * (actual_h - exp_h)
+            delta_a = k * (actual_a - exp_a)
+
+            elo_state[h_key] = elo_h + delta_h
+            elo_state[a_key] = elo_a + delta_a
+
+            if h_key not in elo_history:
+                elo_history[h_key] = deque(maxlen=5)
+            if a_key not in elo_history:
+                elo_history[a_key] = deque(maxlen=5)
+            elo_history[h_key].append(delta_h)
+            elo_history[a_key].append(delta_a)
+
+    df.loc[indices, "elo_home"] = out_elo_home
+    df.loc[indices, "elo_away"] = out_elo_away
+    df.loc[indices, "elo_diff"] = out_elo_diff
+    df.loc[indices, "elo_home_form"] = out_elo_home_form
+    df.loc[indices, "elo_away_form"] = out_elo_away_form
+
+    logger.info(
+        f"  ELO: {mask.sum()} maç hesaplandı, "
+        f"{len(valid_leagues)} lig, "
+        f"{(~mask).sum()} maç NaN (küçük lig)"
+    )
+    return df
+
+
+# ── Grup F: Rest Days (cross-league) ────────────────────────────
+
+def _add_rest_days_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Takım bazlı dinlenme günü. Tüm ligler arası hesaplanır."""
+
+    home = df[["match_code", "match_date", "home_team"]].copy()
+    home.columns = ["match_code", "match_date", "team"]
+    home["side"] = "home"
+
+    away = df[["match_code", "match_date", "away_team"]].copy()
+    away.columns = ["match_code", "match_date", "team"]
+    away["side"] = "away"
+
+    all_matches = pd.concat([home, away], ignore_index=True)
+    all_matches = all_matches.sort_values(["team", "match_date"]).reset_index(drop=True)
+
+    all_matches["prev_date"] = all_matches.groupby("team")["match_date"].shift(1)
+    all_matches["rest_days"] = (all_matches["match_date"] - all_matches["prev_date"]).dt.days
+
+    home_rest = all_matches.loc[
+        all_matches["side"] == "home", ["match_code", "rest_days"]
+    ].rename(columns={"rest_days": "rest_days_home"})
+
+    away_rest = all_matches.loc[
+        all_matches["side"] == "away", ["match_code", "rest_days"]
+    ].rename(columns={"rest_days": "rest_days_away"})
+
+    df = df.merge(home_rest, on="match_code", how="left")
+    df = df.merge(away_rest, on="match_code", how="left")
+    df["rest_days_diff"] = df["rest_days_home"] - df["rest_days_away"]
+
+    valid = df["rest_days_home"].notna().sum()
+    logger.info(f"  Rest days: {valid} maç hesaplandı")
+    return df
+
+
 # ── Grup C: Rolling Takım İstatistikleri ──────────────────────────
 
 def _add_rolling_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -518,6 +673,12 @@ def build_features(df: pd.DataFrame = None) -> pd.DataFrame:
 
     logger.info("🤝 Grup B: H2H features...")
     df = _add_h2h_features(df)
+
+    logger.info("🏆 Grup E: ELO features...")
+    df = _add_elo_features(df)
+
+    logger.info("⏱️  Grup F: Rest days features...")
+    df = _add_rest_days_features(df)
 
     logger.info("📈 Grup C: Rolling features...")
     df = _add_rolling_features(df)
