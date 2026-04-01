@@ -33,6 +33,8 @@ logger = logging.getLogger("ml.train")
 
 ODDS_FEATURE_PREFIXES = ("imp_", "odds_", "ms_", "cs_", "iyms_", "au_", "kg_", "tg_")
 ROLLING_FEATURE_PREFIXES = ("home_avg", "away_avg", "diff")
+ELO_FEATURE_PREFIXES = ("elo_",)
+REST_FEATURE_PREFIXES = ("rest_days_",)
 CONTEXTUAL_FEATURES = ("day_of_week", "month", "league_encoded")
 
 
@@ -280,18 +282,24 @@ def _compute_lift(model_prec: dict, baseline_prec: dict, threshold: float) -> fl
 # ── Feature Importance Gruplama ──────────────────────────────────
 
 def _group_feature_importance(feature_importances: pd.Series) -> dict:
-    """Feature importance'i odds/rolling/contextual olarak grupla."""
+    """Feature importance'i odds/rolling/elo/rest/contextual olarak grupla."""
     total = feature_importances.sum()
     if total == 0:
-        return {"odds_derived": 0.0, "rolling_stats": 0.0, "contextual": 0.0, "other": 0.0}
+        return {"odds_derived": 0.0, "rolling_stats": 0.0, "elo": 0.0,
+                "rest_days": 0.0, "contextual": 0.0, "other": 0.0}
 
-    groups = {"odds_derived": 0, "rolling_stats": 0, "contextual": 0, "other": 0}
+    groups = {"odds_derived": 0, "rolling_stats": 0, "elo": 0,
+              "rest_days": 0, "contextual": 0, "other": 0}
 
     for feat, imp in feature_importances.items():
         if any(feat.startswith(p) for p in ODDS_FEATURE_PREFIXES):
             groups["odds_derived"] += imp
         elif any(feat.startswith(p) for p in ROLLING_FEATURE_PREFIXES):
             groups["rolling_stats"] += imp
+        elif any(feat.startswith(p) for p in ELO_FEATURE_PREFIXES):
+            groups["elo"] += imp
+        elif any(feat.startswith(p) for p in REST_FEATURE_PREFIXES):
+            groups["rest_days"] += imp
         elif feat in CONTEXTUAL_FEATURES:
             groups["contextual"] += imp
         else:
@@ -607,8 +615,8 @@ def train_all_models():
     # Diagnostics ozet tablosu
     logger.info(f"\n{'='*60}")
     logger.info(f"  DIAGNOSTICS OZET")
-    logger.info(f"  {'Market':6s} {'Model%':>8s} {'Baseline%':>10s} {'Lift':>8s} {'Odds%':>8s} {'Rolling%':>10s}")
-    logger.info(f"  {'-'*52}")
+    logger.info(f"  {'Market':6s} {'Model%':>8s} {'Baseline%':>10s} {'Lift':>8s} {'Odds%':>8s} {'Rolling%':>10s} {'ELO%':>6s} {'Rest%':>6s}")
+    logger.info(f"  {'-'*66}")
     for m, diag in all_diagnostics.items():
         mp = f"{diag.get('model_precision', 0):.1%}"
         bp = f"{diag.get('baseline_precision', 0):.1%}" if diag.get('baseline_precision') is not None else "N/A"
@@ -616,7 +624,9 @@ def train_all_models():
         fg = diag.get("feature_group_importance", {})
         od = f"{fg.get('odds_derived', 0):.1%}"
         rs = f"{fg.get('rolling_stats', 0):.1%}"
-        logger.info(f"  {m.upper():6s} {mp:>8s} {bp:>10s} {lf:>8s} {od:>8s} {rs:>10s}")
+        el = f"{fg.get('elo', 0):.1%}"
+        rd = f"{fg.get('rest_days', 0):.1%}"
+        logger.info(f"  {m.upper():6s} {mp:>8s} {bp:>10s} {lf:>8s} {od:>8s} {rs:>10s} {el:>6s} {rd:>6s}")
 
     return all_metrics
 

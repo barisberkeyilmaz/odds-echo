@@ -103,30 +103,37 @@ export async function GET(request: Request) {
 
   const matchCodes = matches.map((m) => m.match_code)
 
-  // 2. Bu maclarin tahminlerini cek (chunk + paginated)
-  // .in() cok buyuk array'lerde sorun cikarabilir — 200'lik chunk'lar kullan
-  let rawPreds: RawPredictionRow[] = []
-  try {
-    const CHUNK = 200
-    for (let i = 0; i < matchCodes.length; i += CHUNK) {
-      const chunk = matchCodes.slice(i, i + CHUNK)
-      const chunkRows = await fetchAllRows<RawPredictionRow>((offset) =>
-        supabase
-          .from('ml_predictions')
-          .select('match_code, market, probabilities, predicted_outcome, confidence, confident_picks, model_version')
-          .in('match_code', chunk)
-          .order('model_version', { ascending: false })
-          .range(offset, offset + PAGE_SIZE - 1),
-      )
-      rawPreds.push(...chunkRows)
-    }
-  } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 })
-  }
+  // 2. En son model versiyonunu bul
+  const { data: versionData } = await supabase
+    .from('ml_predictions')
+    .select('model_version')
+    .order('model_version', { ascending: false })
+    .limit(1)
 
-  // En son model version
-  const latestVersion = rawPreds.length > 0 ? rawPreds[0].model_version : null
-  const preds = rawPreds.filter((p) => p.model_version === latestVersion)
+  const latestVersion = versionData?.[0]?.model_version ?? null
+
+  // 3. Bu maclarin tahminlerini cek (chunk + paginated, sadece son versiyon)
+  // .in() cok buyuk array'lerde sorun cikarabilir — 200'lik chunk'lar kullan
+  let preds: RawPredictionRow[] = []
+  if (latestVersion) {
+    try {
+      const CHUNK = 200
+      for (let i = 0; i < matchCodes.length; i += CHUNK) {
+        const chunk = matchCodes.slice(i, i + CHUNK)
+        const chunkRows = await fetchAllRows<RawPredictionRow>((offset) =>
+          supabase
+            .from('ml_predictions')
+            .select('match_code, market, probabilities, predicted_outcome, confidence, confident_picks, model_version')
+            .eq('model_version', latestVersion)
+            .in('match_code', chunk)
+            .range(offset, offset + PAGE_SIZE - 1),
+        )
+        preds.push(...chunkRows)
+      }
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 })
+    }
+  }
 
   // 3. Predictions'i match_code bazinda grupla
   const predMap = new Map<string, Array<{
